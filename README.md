@@ -74,7 +74,7 @@ Membrane Runtime                    Membrane Runtime
 
 ## 实现进度
 
-**Phase 1 · Steps 1–13 已完成** — 313 tests 全通过，真机 smoke 验证通过，真实 Cocos 项目 E2E 管线验证通过
+**Phase 1 · Steps 1–14 已完成** — 313 tests 全通过，真机 smoke 验证通过，真实 Cocos 项目 E2E 管线验证通过
 
 | Step | 模块 | 关键文件 | 测试 |
 |------|------|----------|------|
@@ -92,6 +92,7 @@ Membrane Runtime                    Membrane Runtime
 | 12G | Scene Compiler | `tools/compiler/scene-compiler.ts` — canonical→WXGE bundle | 13 |
 | 12H | Scene Loader | `src/canonical/scene-loader.ts` — bundle→ECS World 实体加载 | 11 |
 | 13 | Benchmark | `tests/benchmark/` — 正确性验证 + ECS 性能基准 + 实体压力测试 | 26 |
+| 14 | 微信发布流程 | `src/wx-smoke-engine.cts`, `src/wx-smoke-scene.cts`, `tools/compile-fixture.ts` | — |
 
 ### 真机 Smoke 验证
 
@@ -100,6 +101,8 @@ Membrane Runtime                    Membrane Runtime
 | `wx-smoke-bootstrap` | ✅ 通过 | 2026-04-24 |
 | `wx-smoke-runtime` | ✅ 通过 (Canvas2D, 16 sprites, touch spawn, FPS) | 2026-04-24 |
 | `wx-smoke-webgl` | 🔜 待验证 (WebGL on primary canvas, 24 sprites) | — |
+| `wx-smoke-engine` | 🔜 待验证 (真实 runtime 栈: WebGLDevice + SpriteBatcher + ECS, 52KB) | — |
+| `wx-smoke-scene` | 🔜 待验证 (导入 mahjong 场景渲染, 199 entities, 55KB) | — |
 
 ### 微信平台经验
 
@@ -130,18 +133,22 @@ Membrane Runtime                    Membrane Runtime
 
 ### 下一步
 
-- Step 14: 微信发布流程
+- 真机验证 wx-smoke-engine 和 wx-smoke-scene
+- Step 15: Phase 2 方向规划
 
 ## 命令
 
 ```bash
-pnpm install          # 安装依赖
-pnpm test             # 运行 313 个单元测试
-pnpm typecheck        # TypeScript 严格模式检查
-pnpm build            # 构建运行时库
-pnpm build:wx-smoke   # 构建 bootstrap smoke → wx-project/dist/index.js
-pnpm build:wx-runtime # 构建 runtime smoke → wx-project/dist/index.js
-pnpm build:wx-webgl   # 构建 WebGL smoke → wx-project/dist/index.js
+pnpm install              # 安装依赖
+pnpm test                 # 运行 313 个单元测试
+pnpm typecheck            # TypeScript 严格模式检查
+pnpm build                # 构建运行时库
+pnpm build:wx-smoke       # 构建 bootstrap smoke → wx-project/dist/index.js
+pnpm build:wx-runtime     # 构建 runtime smoke → wx-project/dist/index.js
+pnpm build:wx-webgl       # 构建 WebGL smoke → wx-project/dist/index.js
+pnpm build:wx-engine      # 构建 engine smoke (真实 runtime 栈)
+pnpm build:wx-scene       # 构建 scene smoke (导入场景渲染)
+pnpm build:compile-fixture # 编译 Cocos 项目到 JSON fixture
 ```
 
 ## License

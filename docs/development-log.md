@@ -134,7 +134,30 @@
 | 600-frame churn (100 create+destroy/frame) | 27ms |
 | Bundle size | ~178 bytes/entity |
 
+### 已完成 — 微信发布流程 + 导入场景渲染 (Step 14)
+
+- **wx-smoke-engine** (14A): 用真实引擎模块 (WebGLDevice + SpriteBatcher + ECS World) 在微信主 canvas 渲染
+  - `import { WebGLDevice } from './renderer/webgl-device'` 等真实 import
+  - 20 个弹跳彩色方块 (ECS Transform + Velocity)
+  - 触摸生成新方块, FPS bar HUD
+  - `pnpm build:wx-engine` → 52KB
+
+- **compile-fixture**: 编译 Cocos mahjong 项目为 JSON fixture
+  - `tools/compile-fixture.ts` — import → compile → `wx-project/assets/scene-data.json`
+  - 3 个场景 (Loading: 11, Home: 72, MainGame: 116 entities)
+  - 36.6KB fixture
+
+- **wx-smoke-scene** (14B): 导入场景实体渲染
+  - 加载 scene-data.json fixture, `loadSceneData()` 实例化 ECS 实体
+  - 颜色映射: Camera→蓝, Sprite→HSL 哈希色, Transform-only→灰
+  - 自动坐标范围适配到屏幕空间
+  - 触摸切换 3 个场景, HUD 显示实体数/Sprite 比例/FPS
+  - `pnpm build:wx-scene` → 55KB
+
+- **发布检查清单** (14C): `docs/wx-publish-checklist.md`
+  - 构建命令、DevTools 预览、真机扫码、验证清单、已知限制
+
 ### 下一步
 
-1. Step 14: 微信发布流程
-2. wx-smoke-imported-scene: 导入场景真机渲染验证
+1. 真机验证 wx-smoke-engine 和 wx-smoke-scene
+2. Step 15: Phase 2 方向规划
