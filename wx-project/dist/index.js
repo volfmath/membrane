@@ -493,9 +493,10 @@
       c2d.font = "bold 20px monospace";
       c2d.fillText("Membrane loading...", 12, 30);
     }
-    useWebGL = trySetupWebGL();
-    state.glMode = useWebGL;
-    log("render mode:", useWebGL ? "WebGL" : "Canvas2D");
+    useWebGL = false;
+    state.glMode = false;
+    state.status.gl = "skipped";
+    log("render mode: Canvas2D (forced)");
     setupTouch();
     initSprites();
     requestFrame(tick);

@@ -522,10 +522,13 @@ declare const globalThis: any;
       c2d.fillText('Membrane loading...', 12, 30);
     }
 
-    // Try WebGL on secondary canvas
-    useWebGL = trySetupWebGL();
-    state.glMode = useWebGL;
-    log('render mode:', useWebGL ? 'WebGL' : 'Canvas2D');
+    // Force Canvas2D — WebGL on secondary canvas + drawImage compositing
+    // doesn't work on real devices. WebGL verification belongs in a
+    // dedicated wx-smoke-webgl case using the primary canvas directly.
+    useWebGL = false;
+    state.glMode = false;
+    state.status.gl = 'skipped';
+    log('render mode: Canvas2D (forced)');
 
     setupTouch();
     initSprites();
