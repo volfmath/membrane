@@ -8,7 +8,7 @@
   "scripts": {
     "build": "esbuild src/index.ts --bundle --outfile=dist/membrane.js --format=esm --platform=neutral --target=es2020",
     "build:wx-smoke": "esbuild src/wx-smoke-bootstrap.cts --bundle --outfile=wx-project/dist/index.js --format=cjs --platform=neutral --target=es2020",
-    "build:wx-runtime": "esbuild src/wx-smoke-runtime.cts --bundle --outfile=wx-project/dist/index.js --format=cjs --platform=neutral --target=es2020",
+    "build:wx-runtime": "esbuild src/wx-smoke-runtime.cts --bundle --outfile=wx-project/dist/index.js --format=cjs --platform=neutral --target=es6",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
