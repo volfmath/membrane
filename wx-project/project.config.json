@@ -1,0 +1,14 @@
+{
+  "appid": "touristappid",
+  "compileType": "game",
+  "libVersion": "latest",
+  "projectname": "membrane-wx-smoke",
+  "miniprogramRoot": "./",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "ignoreUploadUnusedFiles": true
+  }
+}

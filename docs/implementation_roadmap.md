@@ -94,6 +94,74 @@
 
 ---
 
+## 微信真机验证接入策略
+
+不要把微信真机验证第一次放到 Step 14。更合理的是：
+
+- **Step 1**: 建立微信验证流程和最小项目壳
+- **Step 6**: 第一次在真机上验证平台启动链路
+- **Step 7/8/10/11/12**: 每个关键能力增加一个轻量 smoke gate
+- **Step 14**: 做完整平台验收和发布前检查
+
+也就是说，**真机验证要尽早接入，但每次只验证一个最小闭环**，不要一上来就要求“完整游戏在手机上跑通”。
+
+### 推荐接入点
+
+| 时间点 | 目标 | 真机验证内容 | 通过标准 |
+|--------|------|--------------|----------|
+| Step 1 | 建流程 | 微信项目模板能打开；能加载最小 JS 入口 | 开发者工具可导入，真机可启动空白页/日志 |
+| Step 6 | 平台接入 | `wx.createCanvas` / RAF / 触摸 / 文件读取 | 真机能看到 canvas，日志正常，触摸回调触发 |
+| Step 7 | WebGL 基础 | clearColor / context 属性 / extension 检测 | 真机能稳定清屏并打印 GL 信息 |
+| Step 8 | 渲染基础 | 单纹理 sprite / atlas frame | 真机能显示一个 sprite，坐标和颜色正确 |
+| Step 10 | 运行时集成 | Engine loop + plugin + moving sprite | 真机上最小 runtime 场景能跑 |
+| Step 11 | 音频 | SFX / BGM / 切后台暂停恢复 | 真机音频行为正确 |
+| Step 12 | 导入链路 | 导入后的编译场景在真机加载 | 最小真实内容能在手机上显示 |
+| Step 14 | 平台验收 | 包体 / 子包 / 真机稳定性 | 发布前 checklist 全通过 |
+
+### 为什么 Step 6 是第一次“必须上真机”的节点
+
+Step 6 是 `Platform Adapter`。从这里开始：
+- 代码第一次显式依赖 `wx.*`
+- 浏览器环境不再能完整覆盖平台差异
+- 后面渲染、输入、音频、文件系统都依赖这层
+
+所以：
+- **Step 1** 只建立流程，不承担功能验证
+- **Step 6** 才是第一次真正必须在真机上跑的步骤
+
+### 建议的微信 smoke 流程
+
+每次微信 smoke 都尽量固定成同一个流程：
+
+1. `pnpm build`
+2. 同步 / 拷贝产物到 `wx-project/`
+3. 微信开发者工具打开 `wx-project/`
+4. 开发者工具预览无报错
+5. 手机扫码跑 smoke 页面
+6. 记录结果到 `docs/wx-smoke-log.md` 或 `reports/wx-smoke/*.json`
+
+### 建议保留的固定 smoke 用例
+
+| 用例 | 最早步骤 | 内容 |
+|------|----------|------|
+| `wx-smoke-bootstrap` | Step 1 | 空项目启动、日志输出 |
+| `wx-smoke-platform` | Step 6 | canvas / RAF / touch / file |
+| `wx-smoke-webgl` | Step 7 | clearColor / viewport / extensions |
+| `wx-smoke-sprite` | Step 8 | 单 sprite / atlas frame |
+| `wx-smoke-runtime` | Step 10 | moving sprite / frame counter |
+| `wx-smoke-audio` | Step 11 | click SFX / looping BGM |
+| `wx-smoke-imported-scene` | Step 12 | 导入后的最小 scene |
+
+### 一个重要约束
+
+真机 smoke 必须是**固定页面、固定资源、固定观察点**，不能每次都靠“拿当前开发中的大场景去手机上试试看”。
+
+否则会出现两个问题：
+- 失败时不知道是平台问题、运行时问题，还是内容本身太复杂
+- 每次 smoke 成本太高，团队会本能地拖到最后才测
+
+---
+
 ## Step 模板（建议统一）
 
 以后新增 step，尽量都按这个模板写：
@@ -143,6 +211,8 @@ pnpm test -- ...
 - `package.json` / `tsconfig.json` / `vitest.config.ts`
 - `src/index.ts` — 空入口
 - `tests/sanity.test.ts` — 第一个测试
+- `wx-project/` — 微信小游戏最小壳工程
+- `docs/wx-smoke-log.md` — 真机 smoke 记录模板
 
 **技术选型**:
 
@@ -184,6 +254,14 @@ membrane/
 pnpm install
 pnpm build    # esbuild → dist/membrane.js
 pnpm test     # vitest 1 passed
+```
+
+**微信接入（流程，不验证复杂功能）**:
+```
+微信开发者工具:
+1. 打开 wx-project/
+2. 确认最小入口 JS 可加载
+3. 手机扫码，确认能启动并打印启动日志
 ```
 
 **完成标准**: `pnpm build` 零错误，`pnpm test` 通过。
@@ -332,6 +410,16 @@ pnpm test -- tests/ecs/
 3. 触摸/鼠标事件回调触发
 ```
 
+**微信 smoke（第一次必须上真机）**:
+```
+微信开发者工具 + 手机扫码:
+1. 启动 wx-project/
+2. 看到 canvas 初始化成功日志
+3. RAF 持续递增计数
+4. 点击屏幕，touchStart / touchMove / touchEnd 回调触发
+5. readFile smoke 能返回固定测试文件内容
+```
+
 ---
 
 ### Step 7 — WebGL Device + 状态缓存
@@ -353,6 +441,14 @@ pnpm test -- tests/ecs/
 浏览器打开 test-visual/webgl-test.html:
 1. 整屏 cornflower blue (#6495ED) — clearColor 工作
 2. 控制台: WebGL 版本 + GL 扩展列表
+```
+
+**微信 smoke**:
+```
+微信开发者工具 + 手机扫码:
+1. 真机整屏 clearColor 正确
+2. 控制台打印 WebGL 版本、扩展、drawingBuffer 大小
+3. 横竖屏 / 前后台切换后 context 未异常丢失
 ```
 
 ---
@@ -379,6 +475,15 @@ pnpm test -- tests/ecs/
 2. 多色方块（顶点着色）
 3. PNG 纹理精灵
 4. 控制台: DrawCall = 1（同纹理合批验证）
+```
+
+**微信 smoke**:
+```
+微信开发者工具 + 手机扫码:
+1. 真机显示 1 个固定 sprite
+2. 显示同图集的 100 个 sprite
+3. DrawCall 计数符合预期
+4. atlas frame 坐标在真机上无偏移
 ```
 
 ---
@@ -447,6 +552,15 @@ pnpm test -- tests/asset/bundle.test.ts
 | 10D | Sprite render integration | `test-visual/integration-test.html` | 浏览器中精灵可见、DrawCall 合理 |
 | 10E | tree-shaking smoke | `pnpm build` + bundle 检查 | 未 use 的 plugin 不进入主包 |
 
+**微信 smoke**:
+```
+微信开发者工具 + 手机扫码:
+1. 最小 runtime 场景启动
+2. 一个 sprite 持续移动
+3. frameCount / fps overlay 正常刷新
+4. 触摸输入可改变实体状态（如切换颜色或位置）
+```
+
 ---
 
 ### 步骤依赖关系
@@ -494,6 +608,15 @@ Step 2 / 3 / 6 / 9 可以并行开发，互不依赖。
 1. 点击按钮播放 SFX
 2. BGM 循环播放，淡入效果
 3. masterVolume 滑块实时调节
+```
+
+**微信 smoke**:
+```
+微信开发者工具 + 手机扫码:
+1. 点击按钮播放 SFX
+2. BGM 能循环
+3. 切后台自动暂停，回前台可恢复
+4. mute / masterVolume 行为一致
 ```
 
 ---
@@ -621,6 +744,14 @@ pnpm run compile:scene -- --input ./tmp/canonical --output ./tmp/build
 - 先把链路打通，再扩组件覆盖率
 
 **不建议把 Step 12 当成单个大任务一次做完**。更合理的执行顺序是 `12A → 12B → 12C → 12D → 12E → 12F → 12G → 12H`。
+
+**微信 smoke**:
+```
+微信开发者工具 + 手机扫码:
+1. 加载导入后的最小真实场景
+2. 核对实体数、sprite 数、atlas 资源是否正确
+3. import-report 中的 unsupported 项与真机表现一致
+```
 
 ---
 
