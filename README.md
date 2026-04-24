@@ -50,6 +50,7 @@ Membrane Runtime ◄────────────  GPT Image  │   ...
 | WebGL 渲染器 | [docs/api/renderer.md](./docs/api/renderer.md) | WebGLDevice + 状态缓存 |
 | SpriteBatcher | [docs/api/sprite-batcher.md](./docs/api/sprite-batcher.md) | 2D 精灵批渲染 |
 | Platform Adapter | [docs/api/platform.md](./docs/api/platform.md) | 平台抽象层 |
+| Input System | [docs/api/input.md](./docs/api/input.md) | 触摸/手势输入状态管理 |
 | Asset Pipeline | [docs/api/asset.md](./docs/api/asset.md) | Bundle 二进制格式 |
 | Audio | [docs/api/audio.md](./docs/api/audio.md) | 音效/BGM 管理 |
 
