@@ -10,8 +10,8 @@ declare const wx: {
   createImage(): unknown;
   request(opts: unknown): void;
   getPerformance(): { now(): number };
-  requestAnimationFrame(cb: (time: number) => void): number;
-  cancelAnimationFrame(id: number): void;
+  requestAnimationFrame?(cb: (time: number) => void): number;
+  cancelAnimationFrame?(id: number): void;
   onMemoryWarning(cb: (res: { level: number }) => void): void;
 };
 
@@ -19,6 +19,7 @@ export class WxAdapter implements PlatformAdapter {
   readonly name = 'wx' as const;
   private _canvas: unknown = null;
   private perf = typeof wx !== 'undefined' && typeof wx.getPerformance === 'function' ? wx.getPerformance() : null;
+  private _rafId = 0;
 
   getCanvas(): unknown {
     if (!this._canvas) {
@@ -99,11 +100,30 @@ export class WxAdapter implements PlatformAdapter {
   }
 
   requestAnimationFrame(callback: (time: number) => void): number {
-    return wx.requestAnimationFrame(callback);
+    const c = this._canvas as any;
+    if (c && typeof c.requestAnimationFrame === 'function') {
+      return c.requestAnimationFrame(callback);
+    }
+    if (typeof requestAnimationFrame === 'function') {
+      return requestAnimationFrame(callback);
+    }
+    if (wx.requestAnimationFrame) {
+      return wx.requestAnimationFrame(callback);
+    }
+    return setTimeout(() => callback(Date.now()), 16) as unknown as number;
   }
 
   cancelAnimationFrame(id: number): void {
-    wx.cancelAnimationFrame(id);
+    const c = this._canvas as any;
+    if (c && typeof c.cancelAnimationFrame === 'function') {
+      c.cancelAnimationFrame(id);
+    } else if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(id);
+    } else if (wx.cancelAnimationFrame) {
+      wx.cancelAnimationFrame(id);
+    } else {
+      clearTimeout(id);
+    }
   }
 
   onMemoryWarning(callback: (level: 'low' | 'critical') => void): void {

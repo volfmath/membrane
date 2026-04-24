@@ -3,13 +3,11 @@
 // src/wx-smoke-runtime.cts
 (function smokeRuntime() {
   var TAG = "[Membrane][wx-smoke-runtime]";
-  function log() {
-    var args = Array.prototype.slice.call(arguments);
+  function log(...args) {
     args.unshift(TAG);
     console.info.apply(console, args);
   }
-  function warn() {
-    var args = Array.prototype.slice.call(arguments);
+  function warn(...args) {
     args.unshift(TAG);
     console.warn.apply(console, args);
   }
@@ -487,12 +485,13 @@
     warn("FATAL: primary canvas failed, status:", JSON.stringify(state.status));
     state.summary = "fail";
   } else {
-    if (ctx) {
-      ctx.fillStyle = "#141a22";
-      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-      ctx.fillStyle = "#f4f7fb";
-      ctx.font = "bold 20px monospace";
-      ctx.fillText("Membrane loading...", 12, 30);
+    var c2d = ctx;
+    if (c2d) {
+      c2d.fillStyle = "#141a22";
+      c2d.fillRect(0, 0, canvasWidth, canvasHeight);
+      c2d.fillStyle = "#f4f7fb";
+      c2d.font = "bold 20px monospace";
+      c2d.fillText("Membrane loading...", 12, 30);
     }
     useWebGL = trySetupWebGL();
     state.glMode = useWebGL;

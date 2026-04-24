@@ -12,14 +12,12 @@ declare const globalThis: any;
 (function smokeRuntime(): void {
   var TAG = '[Membrane][wx-smoke-runtime]';
 
-  function log(): void {
-    var args = Array.prototype.slice.call(arguments);
+  function log(...args: any[]): void {
     args.unshift(TAG);
     console.info.apply(console, args);
   }
 
-  function warn(): void {
-    var args = Array.prototype.slice.call(arguments);
+  function warn(...args: any[]): void {
     args.unshift(TAG);
     console.warn.apply(console, args);
   }
@@ -515,12 +513,13 @@ declare const globalThis: any;
     state.summary = 'fail';
   } else {
     // Draw immediate feedback so user sees something right away
-    if (ctx) {
-      ctx.fillStyle = '#141a22';
-      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-      ctx.fillStyle = '#f4f7fb';
-      ctx.font = 'bold 20px monospace';
-      ctx.fillText('Membrane loading...', 12, 30);
+    var c2d = ctx as CanvasRenderingContext2D | null;
+    if (c2d) {
+      c2d.fillStyle = '#141a22';
+      c2d.fillRect(0, 0, canvasWidth, canvasHeight);
+      c2d.fillStyle = '#f4f7fb';
+      c2d.font = 'bold 20px monospace';
+      c2d.fillText('Membrane loading...', 12, 30);
     }
 
     // Try WebGL on secondary canvas
