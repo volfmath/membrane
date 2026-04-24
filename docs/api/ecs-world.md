@@ -14,6 +14,7 @@ class World {
   readonly registry: ComponentRegistry;
   readonly storage: ComponentStorage;
   readonly scheduler: Scheduler;
+  readonly currentTick: number;
 
   constructor(config?: WorldConfig);
 
@@ -32,12 +33,31 @@ class World {
 }
 ```
 
+## update 内部流程
+
+```
+World.update(dt)
+  │
+  ├─ storage.advanceTick()          // 全局 Tick 递增
+  │
+  ├─ scheduler.update(this, dt)     // 按 Phase 执行所有 System
+  │   ├─ PreUpdate systems
+  │   ├─ Update systems
+  │   ├─ PostUpdate systems
+  │   ├─ PreRender systems
+  │   ├─ Render systems
+  │   └─ PostRender systems
+  │
+  └─ (返回，由 Engine 控制下一帧)
+```
+
 ## 关键约束
 
 1. **单一入口**: 游戏代码通过 World 操作，不直接调用子模块
 2. **销毁顺序**: destroyEntity 先清 Component 再回收 ID
 3. **链式调用**: addComponent 返回 this
 4. **update 不可嵌套**
+5. **Tick 递增**: 每次 update 自动推进全局 Tick（驱动 Change Detection）
 
 ## 使用示例
 

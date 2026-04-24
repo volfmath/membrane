@@ -41,10 +41,11 @@ Membrane Runtime ◄────────────  GPT Image  │   ...
 
 | 模块 | 文档 | 职责 |
 |------|------|------|
+| Engine & Plugin | [docs/api/engine.md](./docs/api/engine.md) | 主循环 + 函数式 Plugin 系统 *(Bevy 启发)* |
 | Math 库 | [docs/api/math.md](./docs/api/math.md) | Vec2/Vec3/Mat4 零 GC 运算 |
 | ECS EntityManager | [docs/api/ecs-entity.md](./docs/api/ecs-entity.md) | 实体创建/销毁/ID 复用 |
-| ECS ComponentStorage | [docs/api/ecs-component.md](./docs/api/ecs-component.md) | SoA 布局组件存储 |
-| ECS System Scheduler | [docs/api/ecs-system.md](./docs/api/ecs-system.md) | System 调度/Phase/Query |
+| ECS ComponentStorage | [docs/api/ecs-component.md](./docs/api/ecs-component.md) | SoA + SparseSet 双模式 + Change Detection *(Bevy 启发)* |
+| ECS System Scheduler | [docs/api/ecs-system.md](./docs/api/ecs-system.md) | System 调度 + Changed/Added 查询过滤器 *(Bevy 启发)* |
 | ECS World | [docs/api/ecs-world.md](./docs/api/ecs-world.md) | 门面类，组合 ECS 子系统 |
 | WebGL 渲染器 | [docs/api/renderer.md](./docs/api/renderer.md) | WebGLDevice + 状态缓存 |
 | SpriteBatcher | [docs/api/sprite-batcher.md](./docs/api/sprite-batcher.md) | 2D 精灵批渲染 |

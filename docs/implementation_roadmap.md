@@ -118,9 +118,9 @@ pnpm test -- tests/ecs/entity-manager.test.ts
 
 ---
 
-### Step 4 — ECS ComponentStorage（SoA）
+### Step 4 — ECS ComponentStorage（SoA + SparseSet + Change Detection）
 
-**目标**: SoA 布局的 Component 存储，支持注册、添加、移除、Archetype 位掩码。
+**目标**: 双模式 Component 存储（Table SoA + SparseSet）+ 变更检测。**灵感来源: Bevy ECS。**
 
 **前置依赖**: Step 3
 
@@ -131,6 +131,8 @@ pnpm test -- tests/ecs/entity-manager.test.ts
 - `componentId: 0-63`，BigInt 64 位掩码
 - Archetype = 实体的 Component 组合位掩码
 - `getField()` 返回 TypedArray 视图，直接按 entityIndex 访问
+- **StorageType 双模式**: `Table`（默认，SoA 列式）/ `SparseSet`（频繁增删的标签组件）
+- **Change Detection**: 每个 Component 每个实体维护 `changedTick: Uint32Array` + `addedTick: Uint32Array`，全局 Tick 每帧递增
 
 **测试**:
 ```bash
@@ -142,12 +144,16 @@ pnpm test -- tests/ecs/component-storage.test.ts
 - 添加 / 移除 Component → 位掩码正确更新
 - 连续实体的同字段数据内存连续（SoA 验证）
 - 多种 Component 组合
+- **SparseSet**: 注册标签组件（storage=SparseSet），频繁增删不影响 Table 存储
+- **Change Detection**: 修改数据 + markChanged → isChanged 返回 true；未修改 → false
+- **Added Detection**: addComponent 后 isAdded 返回 true；下一帧后返回 false
+- **Tick 推进**: advanceTick 正确递增
 
 ---
 
-### Step 5 — ECS System Scheduler + World
+### Step 5 — ECS System Scheduler + World + Query Filters
 
-**目标**: System 注册、Phase 分组、Archetype Query、World 门面。
+**目标**: System 注册、Phase 分组、Archetype Query（含 Changed/Added 过滤器）、World 门面。
 
 **前置依赖**: Step 4
 
@@ -156,8 +162,10 @@ pnpm test -- tests/ecs/component-storage.test.ts
 **关键设计**:
 - 6 Phase: PreUpdate → Update → PostUpdate → PreRender → Render → PostRender
 - Query: `with(A, B).without(C)` → BigInt 位掩码匹配
+- **Changed/Added 过滤器**: `query().with(A).changed(A).build()` — 只遍历本帧被修改过的实体（灵感来源: Bevy ECS）
 - World 组合 EntityManager + ComponentStorage + Scheduler
 - Scheduler 预分配 matchBuffer，遍历实体时零 GC
+- 每个 System 维护独立的 `lastRunTick`，用于 Change Detection 比较
 
 **测试**:
 ```bash
@@ -169,6 +177,9 @@ pnpm test -- tests/ecs/
 - Query with/without 过滤逻辑
 - 动态增删 Component 后 Query 实时更新
 - World.update(dt) 全链路
+- **Changed 过滤**: 修改 Transform → Changed(Transform) 查询命中；未修改 → 跳过
+- **Added 过滤**: 新增 Sprite → Added(Sprite) 查询命中；已有 → 跳过
+- **混合过滤**: `with(Transform).changed(Transform).without(Hidden)` 组合查询
 
 ---
 
@@ -270,17 +281,25 @@ pnpm test -- tests/asset/bundle.test.ts
 
 ---
 
-### Step 10 — 集成：ECS + 渲染
+### Step 10 — 集成：Engine + Plugin + ECS + 渲染
 
-**目标**: ECS World 驱动渲染管线，浏览器中跑通动画场景。
+**目标**: 实现 Engine 主循环和函数式 Plugin 系统，用 Plugin 组装 ECS + 渲染管线，浏览器中跑通动画场景。**灵感来源: Bevy Plugin 架构。**
 
 **前置依赖**: Step 5, Step 8
 
 **交付物**:
+- `src/core/engine.ts` — Engine 主循环 + Plugin 注册
+- `src/core/plugins/transform-plugin.ts` — 内置 Transform Plugin
+- `src/core/plugins/sprite-plugin.ts` — 内置 Sprite 渲染 Plugin
 - `src/ecs/built-in-systems/` (transform-system, sprite-render-system)
 - `src/ecs/built-in-components.ts` (Transform, Sprite, Camera)
-- `src/core/engine.ts` — 主循环
 - 浏览器集成测试页
+
+**关键设计**:
+- `MembranePlugin = (engine: Engine) => void` — 函数即 Plugin
+- `engine.use(plugin)` 链式注册
+- 引擎核心只有 ECS + 主循环，渲染/音频/物理全是可选 Plugin
+- esbuild tree-shaking 自动剔除未 use 的 Plugin 代码
 
 **测试**:
 ```
@@ -289,6 +308,7 @@ pnpm test -- tests/asset/bundle.test.ts
 2. 精灵在移动（MovementSystem 驱动）
 3. 帧率显示在左上角，稳定 60fps
 4. DrawCall 合批正常
+5. 只注册 transformPlugin（不注册 spritePlugin）时，渲染代码不加载（tree-shaking 验证）
 ```
 
 ---
