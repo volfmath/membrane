@@ -1,7 +1,7 @@
 {
-  "appid": "touristappid",
+  "appid": "wxcef2a672bb6ab030",
   "compileType": "game",
-  "libVersion": "latest",
+  "libVersion": "3.15.2",
   "projectname": "membrane-wx-smoke",
   "miniprogramRoot": "./",
   "setting": {
@@ -9,6 +9,31 @@
     "enhance": true,
     "postcss": true,
     "minified": true,
-    "ignoreUploadUnusedFiles": true
-  }
+    "ignoreUploadUnusedFiles": true,
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
+  },
+  "simulatorPluginLibVersion": {},
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "isGameTourist": false,
+  "editorSetting": {}
 }
