@@ -35,19 +35,20 @@ Membrane 的策略：
 
 ## 两阶段战略
 
-### Phase 1 —— 寄生：用性能杀死迁移成本
+### Phase 1 —— 寄生：借用现有工具链验证运行时与数据格式
 
-**目标**：让现有 Unity / Cocos 小游戏用 Membrane 导出工具重新打包，**直接提升 20% 性能**，零代码修改。
+**目标**：先不做完整工具链，而是借用现有 Unity / Cocos 项目作为内容入口，做一条**单向 Import → Canonical Format → Runtime Bundle** 链路，用真实内容验证 Membrane Runtime、资源管线和性能边界。
 
 ```
 现有小游戏项目 (Unity / Cocos Creator)
          │
          ▼
-  Membrane 导出工具
+  Membrane 导入 / 编译工具
   ├── 解析 Cocos .scene / .prefab（JSON 格式）
-  ├── 解析 Unity AssetBundle / WebGL Build
-  ├── 转换为 Membrane 内部格式（ECS 场景数据 + Bundle 资源包）
-  └── 脚本组件 → 事件表映射（渐进支持）
+  ├── 解析 Unity AssetBundle / WebGL Build（渐进支持）
+  ├── 转换为 Membrane Canonical Format（Entity + Components + Assets）
+  ├── 编译为 Runtime Bundle（Scene Manifest + .wxpak）
+  └── 标记 unsupported 组件，生成导入报告
          │
          ▼
   Membrane Runtime 运行
@@ -59,7 +60,7 @@ Membrane 的策略：
   └── 自定义 Bundle —— 零拷贝资源读取
 ```
 
-**20% 性能提升来源**：
+**运行时性能优势来源（验证指标，而非唯一承诺）**：
 
 | 优化手段 | 对比 Cocos/Unity 适配层 | 预估提升 |
 |---------|----------------------|---------|
@@ -70,18 +71,19 @@ Membrane 的策略：
 | 零 GC 数学运算 | Cocos 数学库每次运算分配新对象 | 2-4% |
 | 自定义 Bundle 零拷贝 | Cocos 资源加载有额外拷贝开销 | 1-2% |
 
-**关键策略**：不要求用户改代码。导出工具做翻译层，把现有项目转成 Membrane 格式。用户只需要"导出 → 运行 → 看到帧率提升"。迁移成本趋近于零，用户没有理由不试。
+**关键策略**：Phase 1 不承诺完整兼容，也不追求 round-trip。它只做单向导入，把现有项目当作内容源和测试夹具；真正稳定的资产是 Membrane 的 canonical format，而不是对 Cocos / Unity 文件格式的长期依赖。
 
 **验证里程碑**：
-1. 找一个开源 Cocos Creator 小游戏 demo，用导出工具转换
-2. 对比原版和 Membrane 版的帧率、DrawCall 数、内存占用
-3. 达到 ≥15% 性能提升即可对外宣传
+1. 定义一套适合 AI 阅读、也适合 ECS 编译的 canonical scene / sprite format
+2. 找一个开源 Cocos Creator 小游戏 demo，导入为 canonical format，再编译为 runtime bundle
+3. 在浏览器 / 微信环境中加载编译结果，验证渲染、资源、包体和性能预算
+4. 如果与原版对比达到明显性能提升（如 ≥15%），可作为额外宣传数据；但这不是 Phase 1 的唯一出口条件
 
 ---
 
 ### Phase 2 —— 替代：AI-Native 创作平台
 
-Phase 1 证明运行时够强之后，把 Unity / Cocos 的编辑器彻底甩掉。
+Phase 1 先借用现有工具链把 runtime 和数据格式跑通，Phase 2 再把 Unity / Cocos 的编辑器彻底甩掉。
 
 **创作层变成 Notion-like 的网页工具**，对人是可视化的内容管理界面，对 AI 是一组 MCP 连接器。
 
@@ -118,28 +120,41 @@ Phase 1 证明运行时够强之后，把 Unity / Cocos 的编辑器彻底甩掉
 
 ## 内部数据格式（草案）
 
-2D 小游戏的本质极其简单：
+Membrane 内部数据分两层：
 
-```
-场景 = 图层列表
-  每个图层 = 一堆精灵
-    每个精灵 = 图片引用 + Transform + 标签
+1. **Canonical Format（给 AI / 导入器 / 未来工具链）**
+   - 文本 JSON，可读、可 diff、可被 MCP 直接读写
+   - 以 `entity + components` 为主，而不是传统 node tree / hierarchy
+   - hierarchy 只作为可选 `parent` 关系存在，不再作为主数据结构
+   - sprite / atlas / frame / tag 等引用全部显式化
 
-逻辑 = 事件表
-  on(触发条件) → do(动作列表)
-```
+2. **Runtime Format（给运行时）**
+   - Scene manifest + compiled scene data + asset bundle
+   - 预解析 asset id、atlas/frame、component layout
+   - 目标是 SoA、零拷贝、按需加载
 
-JSON 示例：
+Canonical JSON 示例：
 ```json
 {
   "scene": "level_01",
-  "layers": [
+  "entities": [
     {
-      "name": "entities",
-      "sprites": [
-        { "img": "player.png", "x": 100, "y": 200, "tags": ["player", "physics"] },
-        { "img": "coin.png",   "x": 300, "y": 200, "tags": ["collectible"] }
-      ]
+      "id": "player",
+      "parent": null,
+      "components": {
+        "Transform": { "x": 100, "y": 200, "rotation": 0, "scaleX": 1, "scaleY": 1 },
+        "Sprite": { "atlas": "main", "frame": "player_idle", "order": 10 },
+        "Tags": { "values": ["player"] }
+      }
+    },
+    {
+      "id": "coin_01",
+      "parent": null,
+      "components": {
+        "Transform": { "x": 300, "y": 200 },
+        "Sprite": { "atlas": "main", "frame": "coin" },
+        "Tags": { "values": ["collectible"] }
+      }
     }
   ],
   "events": [
@@ -148,7 +163,7 @@ JSON 示例：
 }
 ```
 
-具体格式是实现细节，随时可调。**但格式的稳定性是核心资产，上下两层能否解耦取决于此。**
+导入器负责把 Cocos / Unity 内容归一化到 Canonical Format；编译器负责把 Canonical Format 烘焙为 Runtime Format。**但格式的稳定性是核心资产，上下两层能否解耦取决于此。**
 
 ---
 
@@ -157,7 +172,7 @@ JSON 示例：
 | 层级 | AI 角色 | 说明 |
 |------|---------|------|
 | 内容生产端（Phase 2） | **主力** | 策划、美术、代码全由 AI + MCP 连接器生产 |
-| 导出工具（Phase 1） | **辅助** | AI 辅助解析脚本组件、生成事件表映射 |
+| 导入器 / 编译器（Phase 1） | **辅助** | AI 辅助补全映射、生成导入报告、翻译简单脚本为事件表 |
 | 运行时逻辑层 | **可选** | NPC AI 行为等，后期探索 |
 | 运行时调度层 | **不介入** | 保持确定性和性能可预测 |
 
@@ -165,5 +180,5 @@ JSON 示例：
 
 ## 一句话总结
 
-> Phase 1：寄生在 Unity/Cocos 生态上，用性能优势零成本获客。
+> Phase 1：借用 Unity/Cocos 工具链，把 canonical format 和 runtime 跑通。
 > Phase 2：客户到手后，用 AI-Native 创作平台把旧引擎扔进垃圾桶。

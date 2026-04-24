@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane.dev/schema/canonical-scene.schema.json",
+  "title": "Membrane Canonical Scene",
+  "type": "object",
+  "required": ["format", "version", "sceneId", "entities"],
+  "properties": {
+    "format": {
+      "const": "membrane.scene"
+    },
+    "version": {
+      "const": 1
+    },
+    "sceneId": {
+      "$ref": "#/$defs/idString"
+    },
+    "name": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "idString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_./:-]+$"
+    },
+    "colorString": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{8}$"
+    },
+    "entity": {
+      "type": "object",
+      "required": ["id", "components"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/idString"
+        },
+        "name": {
+          "type": "string"
+        },
+        "parent": {
+          "type": ["string", "null"],
+          "pattern": "^[A-Za-z0-9_./:-]+$"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "components": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
+          "properties": {
+            "Transform": {
+              "$ref": "#/$defs/transformComponent"
+            },
+            "Sprite": {
+              "$ref": "#/$defs/spriteComponent"
+            },
+            "Camera": {
+              "$ref": "#/$defs/cameraComponent"
+            },
+            "Tags": {
+              "$ref": "#/$defs/tagsComponent"
+            },
+            "PrefabRef": {
+              "$ref": "#/$defs/prefabRefComponent"
+            }
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/customComponent"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "transformComponent": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" },
+        "rotation": { "type": "number" },
+        "scaleX": { "type": "number" },
+        "scaleY": { "type": "number" },
+        "scaleZ": { "type": "number" },
+        "anchorX": { "type": "number" },
+        "anchorY": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "spriteComponent": {
+      "type": "object",
+      "required": ["atlas", "frame"],
+      "properties": {
+        "atlas": { "$ref": "#/$defs/idString" },
+        "frame": { "$ref": "#/$defs/idString" },
+        "order": { "type": "integer" },
+        "color": { "$ref": "#/$defs/colorString" },
+        "flipX": { "type": "boolean" },
+        "flipY": { "type": "boolean" },
+        "visible": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "cameraComponent": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "const": "orthographic"
+        },
+        "size": { "type": "number" },
+        "near": { "type": "number" },
+        "far": { "type": "number" },
+        "clearColor": { "$ref": "#/$defs/colorString" }
+      },
+      "additionalProperties": false
+    },
+    "tagsComponent": {
+      "type": "object",
+      "required": ["values"],
+      "properties": {
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "prefabRefComponent": {
+      "type": "object",
+      "required": ["prefabId"],
+      "properties": {
+        "prefabId": { "$ref": "#/$defs/idString" },
+        "inheritTransform": { "type": "boolean" },
+        "overrides": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "customComponent": {
+      "type": "object"
+    },
+    "event": {
+      "type": "object",
+      "required": ["id", "on", "do"],
+      "properties": {
+        "id": { "$ref": "#/$defs/idString" },
+        "on": { "type": "string" },
+        "do": {
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

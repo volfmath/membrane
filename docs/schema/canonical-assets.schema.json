@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane.dev/schema/canonical-assets.schema.json",
+  "title": "Membrane Canonical Assets",
+  "type": "object",
+  "required": ["format", "version", "scenes", "atlases", "audio"],
+  "properties": {
+    "format": {
+      "const": "membrane.assets"
+    },
+    "version": {
+      "const": 1
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/pathEntry"
+      }
+    },
+    "prefabs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/pathEntry"
+      }
+    },
+    "atlases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/atlas"
+      }
+    },
+    "audio": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/audioEntry"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "idString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_./:-]+$"
+    },
+    "pathEntry": {
+      "type": "object",
+      "required": ["id", "path"],
+      "properties": {
+        "id": { "$ref": "#/$defs/idString" },
+        "path": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "frame": {
+      "type": "object",
+      "required": ["id", "x", "y", "width", "height"],
+      "properties": {
+        "id": { "$ref": "#/$defs/idString" },
+        "x": { "type": "integer" },
+        "y": { "type": "integer" },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "pivotX": { "type": "number" },
+        "pivotY": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "atlas": {
+      "type": "object",
+      "required": ["id", "image", "width", "height", "frames"],
+      "properties": {
+        "id": { "$ref": "#/$defs/idString" },
+        "image": { "type": "string", "minLength": 1 },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "frames": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/frame"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "audioEntry": {
+      "type": "object",
+      "required": ["id", "path", "kind"],
+      "properties": {
+        "id": { "$ref": "#/$defs/idString" },
+        "path": { "type": "string", "minLength": 1 },
+        "kind": {
+          "enum": ["bgm", "sfx", "voice", "ambient"]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

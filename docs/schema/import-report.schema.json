@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane.dev/schema/import-report.schema.json",
+  "title": "Membrane Import Report",
+  "type": "object",
+  "required": ["format", "version", "source", "summary", "issues"],
+  "properties": {
+    "format": {
+      "const": "membrane.import-report"
+    },
+    "version": {
+      "const": 1
+    },
+    "source": {
+      "type": "object",
+      "required": ["kind", "root"],
+      "properties": {
+        "kind": {
+          "enum": ["cocos", "unity", "custom"]
+        },
+        "root": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": ["sceneCount", "entityCount", "warningCount", "unsupportedCount"],
+      "properties": {
+        "sceneCount": { "type": "integer", "minimum": 0 },
+        "entityCount": { "type": "integer", "minimum": 0 },
+        "warningCount": { "type": "integer", "minimum": 0 },
+        "unsupportedCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/issue"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "issue": {
+      "type": "object",
+      "required": ["severity", "code", "message"],
+      "properties": {
+        "severity": {
+          "enum": ["info", "warning", "error"]
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sceneId": {
+          "type": "string"
+        },
+        "entityId": {
+          "type": "string"
+        },
+        "component": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -8,7 +8,7 @@
 
 ## 战略
 
-**Phase 1 — 寄生**：做一个巨牛逼的微信小游戏运行时（零 DOM、原生 WebGL、天然 ECS），配一个导出工具让 Unity / Cocos 小游戏无代码修改直接提升 20% 性能。
+**Phase 1 — 寄生**：先做一个高性能微信小游戏运行时（零 DOM、原生 WebGL、天然 ECS），再做一条从 Unity / Cocos 到 Membrane canonical format / runtime bundle 的单向导入链路，用现有项目验证运行时、资源管线和性能边界。
 
 **Phase 2 — 替代**：把旧引擎扔进垃圾桶。创作平台像 Notion 一样，给你一堆 MCP 连接器 —— Perplexity 出策划案，GPT Image 生图，Claude 产出代码。
 
@@ -17,13 +17,16 @@ Phase 1                                Phase 2
 ──────                                ──────
 Unity/Cocos 项目                     "做一个跑酷游戏"
       │                                    │
-  导出工具                            MCP 连接器
+导入 / 编译工具                        MCP 连接器
       │                              ┌────┼────┐
       ▼                         Perplexity │  Claude
-Membrane Runtime ◄────────────  GPT Image  │   ...
+Membrane Canonical Format ◄──── GPT Image  │   ...
       │                                    │
       ▼                                    ▼
- 微信小游戏发布 ◄──────────────── Membrane Runtime
+Membrane Runtime                    Membrane Runtime
+      │                                    │
+      ▼                                    ▼
+ 微信小游戏发布 ◄──────────────── 微信小游戏发布
 ```
 
 ## 文档
@@ -53,6 +56,8 @@ Membrane Runtime ◄────────────  GPT Image  │   ...
 | Input System | [docs/api/input.md](./docs/api/input.md) | 触摸/手势输入状态管理 |
 | Asset Pipeline | [docs/api/asset.md](./docs/api/asset.md) | Bundle 二进制格式 |
 | Audio | [docs/api/audio.md](./docs/api/audio.md) | 音效/BGM 管理 |
+| Canonical Format | [docs/api/canonical-format.md](./docs/api/canonical-format.md) | AI 可读的场景 / 资源源格式 |
+| Importer CLI | [docs/api/importer-cli.md](./docs/api/importer-cli.md) | 单向导入、校验、编译命令约定 |
 
 ## 核心技术优势
 

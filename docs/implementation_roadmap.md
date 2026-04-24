@@ -1,12 +1,12 @@
 # 实现路线图
 
-> Phase 1 做运行时和导出工具，让现有小游戏无代码修改提升 20% 性能。
+> Phase 1 先做运行时、canonical format 和单向导入链路，用现有项目作为内容源验证 runtime、资源管线和性能预算。
 > Phase 2 做 AI-Native 创作平台，用 MCP 连接器替代传统编辑器。
 > 每一步都必须可独立测试验证。
 
 ---
 
-# Phase 1 — 高性能运行时 + 导出工具
+# Phase 1 — 高性能运行时 + Canonical Format + 导入链路
 
 ## Part A：核心运行时
 
@@ -44,9 +44,10 @@ membrane/
 │   ├── renderer/
 │   └── asset/
 ├── test-visual/          # 浏览器视觉测试页
-├── tools/                # Phase 1 导出工具
-│   ├── cocos-exporter/
-│   └── unity-exporter/
+├── tools/                # Phase 1 导入 / 编译工具
+│   ├── cocos-importer/
+│   ├── unity-importer/
+│   └── compiler/
 ├── docs/
 ├── package.json
 ├── tsconfig.json
@@ -217,7 +218,7 @@ pnpm test -- tests/ecs/
 **交付物**: `src/renderer/` (webgl-device, gl-state-cache, shader) + 浏览器测试页
 
 **关键设计**:
-- 优先 WebGL2，自动降级 WebGL1（能力检测）
+- WebGL1 优先，自动启用 WebGL2 更优路径（能力检测）
 - GLStateCache: bound textures, blend, depth, viewport, program
 - `setState()` 先 diff，相同状态跳过 GL 调用
 - Shader 编译错误统一包装
@@ -326,7 +327,7 @@ Step 1 (脚手架)
   │           └── Step 8 (Batcher) ───┘       │
   └── Step 9 (Bundle 格式) ──────────────── Step 11 (Audio)
                                               │
-                                        Step 12 (导出工具)
+                                        Step 12 (导入链路)
                                               │
                                         Step 13 (Benchmark)
 ```
@@ -335,7 +336,7 @@ Step 2 / 3 / 6 / 9 可以并行开发，互不依赖。
 
 ---
 
-## Part B：导出工具 + 性能验证
+## Part B：导入链路 + 运行时验证
 
 ### Step 11 — Audio Manager
 
@@ -362,45 +363,54 @@ Step 2 / 3 / 6 / 9 可以并行开发，互不依赖。
 
 ---
 
-### Step 12 — Cocos Creator 导出工具
+### Step 12 — Cocos Creator 导入器 + Canonical Format
 
-**目标**: 解析 Cocos Creator 项目，导出为 Membrane 格式。**这是 Phase 1 的商业杀手锏。**
+**目标**: 解析 Cocos Creator 项目，单向导入为 Membrane canonical format，并编译为 runtime bundle。**这是 Phase 1 的内容入口和运行时验证链路，不是兼容承诺。**
 
 **前置依赖**: Step 10, Step 9
 
 **交付物**:
-- `tools/cocos-exporter/scene-parser.ts` — 解析 `.scene` / `.prefab` (JSON)
-- `tools/cocos-exporter/component-mapper.ts` — Cocos 组件 → Membrane ECS 映射
-- `tools/cocos-exporter/asset-converter.ts` — 资源转换 + Bundle 打包
-- `tools/cocos-exporter/cli.ts` — 命令行入口
+- `tools/cocos-importer/scene-parser.ts` — 解析 `.scene` / `.prefab` (JSON)
+- `tools/cocos-importer/component-mapper.ts` — Cocos 组件 → Membrane canonical component 映射
+- `tools/cocos-importer/canonical-writer.ts` — 输出 canonical scene / asset 描述
+- `tools/compiler/scene-compiler.ts` — canonical scene → runtime bundle / manifest
+- `tools/cocos-importer/cli.ts` — 命令行入口
+- `docs/api/canonical-format.md` — canonical scene / asset / import-report 规格
+- `docs/api/importer-cli.md` — import / validate / compile CLI 约定
 - 单元测试 + 集成测试
 
 **关键设计**:
 
-Cocos Creator `.scene` 文件是 JSON 格式，结构化程度高，解析工作量可控：
+Cocos Creator `.scene` 文件是 JSON 格式，结构化程度高，解析工作量可控。Phase 1 只支持一小组标准组件，把它们转为 canonical format：
 
 ```
-Cocos 节点树                        Membrane ECS
-──────────                        ────────────
+Cocos 节点树                        Membrane Canonical Format
+──────────                        ─────────────────────────
 cc.Node                    →      Entity
-  ├── cc.UITransform       →      TransformComponent (坐标系翻转 Y)
-  ├── cc.Sprite            →      SpriteComponent (纹理引用 + UV)
-  ├── cc.Label             →      LabelComponent (文字渲染)
-  ├── cc.Animation         →      AnimationComponent
-  ├── cc.RigidBody2D       →      PhysicsComponent (后续支持)
-  └── 自定义脚本组件        →      EventTable / CustomSystem (渐进支持)
+  ├── cc.UITransform       →      Transform
+  ├── cc.Sprite            →      Sprite
+  ├── SpriteAtlas          →      AssetRef / AtlasRef
+  ├── Prefab               →      PrefabRef / 展平后的 EntityTemplate
+  ├── 节点层级关系          →      可选 parent 字段（非主数据结构）
+  └── 其他组件             →      unsupported + 导入报告
 ```
 
 **难点与策略**:
 
 | 难点 | 策略 |
 |------|------|
-| 自定义脚本组件 | Phase 1 先跳过，标记为 unsupported；后续用 AI 辅助翻译 |
-| 动画时间轴 | 逐帧解析 Cocos 动画格式，映射为 Membrane AnimationClip |
+| 自定义脚本组件 | Phase 1 先跳过，标记为 unsupported，输出导入报告；后续再探索 AI 辅助翻译 |
+| hierarchy 结构 | 归一化为显式 `parent` 关系，避免继续依赖节点树作为主结构 |
 | 资源引用（uuid） | 建立 uuid → assetId 映射表 |
 | 坐标系差异 | Y 轴翻转 + anchor point 偏移 |
+| Label / Animation / Physics | Phase 1 默认不承诺支持，后续按验证结果逐步补齐 |
 
-**导出流程**:
+**范围约束**:
+- 只做单向 import，不做 round-trip
+- 不承诺现有项目无痛迁移
+- Phase 1 的目标是把真实内容送进 runtime，而不是完整复刻 Cocos 行为
+
+**导入 / 编译流程**:
 ```
 cocos-project/
   ├── assets/           ← 扫描所有 .scene / .prefab / 图片 / 音频
@@ -409,35 +419,59 @@ cocos-project/
           │
           ▼
 
-  membrane-export --input ./cocos-project --output ./membrane-build
+  membrane import cocos --input ./cocos-project --output ./canonical
+
+          │
+          ▼
+
+  canonical/
+  ├── scenes/
+  │   └── level_01.scene.json  ← Canonical Scene（Entity + Components）
+  ├── prefabs/
+  │   └── enemy.prefab.json    ← 可选：Prefab Canonical 输出
+  ├── assets.json              ← 资源描述 / atlas / frame 映射
+  └── import-report.json       ← unsupported 组件 / 警告
+
+          │
+          ▼
+
+  membrane validate canonical --input ./canonical
+
+          │
+          ▼
+
+  membrane compile --input ./canonical --output ./membrane-build
 
           │
           ▼
 
   membrane-build/
-  ├── scenes/
-  │   └── level_01.json       ← Membrane 场景数据（ECS 实体列表）
+  ├── manifest.json            ← Scene -> Bundle -> AssetId 映射
   ├── bundles/
-  │   └── assets.wxpak        ← 二进制资源包
-  └── manifest.json           ← 场景 → Bundle 映射
+  │   └── assets.wxpak         ← 二进制资源包（含 Scene / Texture / Audio）
+  └── reports/
+      └── compile-report.json  ← 编译统计 / 烘焙信息
 ```
 
 **测试验证**:
 ```bash
-# 单元测试: 解析器
-pnpm test -- tests/tools/cocos-exporter/
+# 单元测试: 解析器 + canonical format schema
+pnpm test -- tests/tools/cocos-importer/
 
-# 集成测试: 导出真实 Cocos demo 项目
-pnpm run export:cocos -- --input ./test-fixtures/cocos-demo --output ./tmp/export
-# 验证输出文件结构
-# 在浏览器中加载导出场景，对比原版渲染结果
+# 集成测试: 导入真实 Cocos demo 项目
+pnpm run import:cocos -- --input ./test-fixtures/cocos-demo --output ./tmp/canonical
+# 验证 canonical 输出结构
+pnpm run validate:canonical -- --input ./tmp/canonical
+pnpm run compile:scene -- --input ./tmp/canonical --output ./tmp/build
+# 编译为 runtime bundle
+# 在浏览器中加载编译场景，验证渲染结果
 ```
 
 ---
 
-### Step 13 — 性能 Benchmark
+### Step 13 — 运行时验证 + Benchmark
 
-**目标**: 建立自动化 benchmark 框架，**用数据证明 20% 性能提升**。
+**目标**: 建立自动化验证和 benchmark 框架，证明 `Cocos -> canonical -> runtime bundle -> Membrane Runtime` 整条链路可用，并测量性能预算。
 
 **前置依赖**: Step 12
 
@@ -450,24 +484,28 @@ pnpm run export:cocos -- --input ./test-fixtures/cocos-demo --output ./tmp/expor
 
 | 场景 | 内容 | 核心指标 |
 |------|------|---------|
+| 导入正确性 | canonical scene / import-report / asset 映射 | schema 校验, unsupported 列表 |
+| 场景加载 | bundle 加载 + scene instantiate | 加载时间, 正确性 |
 | 精灵压力测试 | 1000 / 5000 / 10000 个移动精灵 | FPS, DrawCall 数 |
 | 实体创建销毁 | 每帧创建/销毁 100 个实体 | GC 暂停时间 |
 | 纹理切换 | 100 种不同纹理混合渲染 | DrawCall 数, FPS |
 | 资源加载 | 10MB Bundle 加载 | 加载时间, 内存占用 |
-| 真实场景 | Cocos demo 导出后运行 | 对比原版帧率 |
+| 真实场景 | Cocos demo 导入后运行 | 正确性, FPS, DrawCall, 内存 |
 
 **对比方式**:
 ```
-同一台设备，同一个微信开发者工具版本:
-1. 原版 Cocos Creator 小游戏 → 记录 FPS / DrawCall / 内存
-2. Membrane 导出版 → 记录 FPS / DrawCall / 内存
-3. 生成对比报告
+1. `Cocos 项目 → canonical format → runtime bundle → Membrane Runtime` 全链路跑通
+2. 对导入报告、场景结构、资源映射做自动校验
+3. 在同一设备上记录 FPS / DrawCall / 内存
+4. 若有可对照原版，再生成原版 vs Membrane 对比报告
 ```
 
 **完成标准**:
+- `import -> canonical -> compile -> runtime load` 全链路通过
+- 真实导入场景在浏览器 / 微信环境中渲染正确
 - 精灵压力测试: 5000 精灵 ≥ 55fps (桌面) / ≥ 30fps (中端手机)
-- Cocos 导出对比: **帧率提升 ≥ 15%**
 - 零 GC 验证: 连续运行 60 秒，GC 暂停 < 2ms
+- 若 Cocos 对照实验达到 **≥15% 性能提升**，可作为额外宣传数据，但不作为 Phase 1 出口条件
 
 ---
 
@@ -506,9 +544,10 @@ pnpm run export:cocos -- --input ./test-fixtures/cocos-demo --output ./tmp/expor
 M1: Runtime 核心跑通 (Step 1-10)
     → 浏览器中 ECS + WebGL 渲染动画场景，60fps
 
-M2: 导出工具 + 性能验证 (Step 11-13)
-    → Cocos demo 导出后在 Membrane 上运行
-    → Benchmark 证明 ≥15% 性能提升
+M2: 单向导入链路 + 运行时验证 (Step 11-13)
+    → Cocos demo 导入为 canonical format
+    → 编译后在 Membrane 上运行
+    → Benchmark 验证正确性、性能、包体和资源管线
 
 M3: 微信发布 (Step 14)
     → 真机跑通，发布到微信小游戏平台
@@ -655,7 +694,7 @@ M6: 创作界面 (Step 17)
     │  ~6-8 周                 │    │  ~2 周                     │
     │          │               │    │          │                 │
     │          ▼               │    │          ▼                 │
-    │  M2: 导出工具 + Benchmark│    │  M5: AI 连接器             │
+    │  M2: 导入链路 + 验证     │    │  M5: AI 连接器             │
     │  (Step 11-13)            │    │  (Step 16)                 │
     │  ~4-6 周                 │    │  ~4 周                     │
     │          │               │    │          │                 │
@@ -668,14 +707,14 @@ M6: 创作界面 (Step 17)
             ~12-16 周                       ~12-14 周
 ```
 
-**Phase 1 总耗时**: 约 3-4 个月（Runtime + 导出工具 + 微信发布）
+**Phase 1 总耗时**: 约 3-4 个月（Runtime + canonical format + 导入链路 + 微信发布）
 **Phase 2 总耗时**: 约 3 个月（MCP + AI 连接器 + 创作界面）
 
 ---
 
-# 附录：性能优势技术细节
+# 附录：运行时潜在性能优势
 
-## 为什么能比 Cocos / Unity 适配层快 20%
+## 为什么理论上会比 Cocos / Unity 适配层更快
 
 ### 1. 零 DOM 依赖
 
