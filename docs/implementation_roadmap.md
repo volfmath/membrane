@@ -6,6 +6,131 @@
 
 ---
 
+## 规划原则：每一步都要可测试
+
+### 1. 每一步只引入一种新风险
+
+不要在同一个 step 里同时引入：
+- 新数据格式
+- 新运行时子系统
+- 新平台适配
+- 新内容来源
+
+一个 step 最好只回答一个问题，例如：
+- “TypedArray SoA 能不能正确存取？”
+- “浏览器里能不能稳定创建 WebGL 上下文？”
+- “Cocos `.scene` 能不能稳定转成 canonical scene？”
+
+而不是在一个 step 里同时回答“能不能导入、编译、加载、渲染、对比原版”。
+
+### 2. 每一步必须有一个主测试入口
+
+每一步都必须能指向一个明确入口，且优先选最便宜的那个：
+
+1. `pnpm test -- ...`（单元测试）
+2. `pnpm run ...`（CLI / 集成测试）
+3. `test-visual/*.html`（浏览器视觉验证）
+4. 微信开发者工具
+5. 真机扫码
+
+如果一个 step 只能靠“人工感觉差不多”来判断，那它就还没切对。
+
+### 3. 每一步必须有固定 fixture
+
+不要把“真实项目终于跑通”当作唯一测试方式。每一步都要有对应夹具：
+- unit fixture：最小输入对象 / schema 样例
+- integration fixture：最小 scene / prefab / bundle
+- visual fixture：固定测试页和固定截图预期
+- platform fixture：固定 wx-project 模板
+
+这样失败时才能定位是“实现错了”还是“内容太复杂”。
+
+### 4. 每一步必须产出机器可校验结果
+
+优先产出这些东西：
+- `json` / `schema`
+- `manifest`
+- `report`
+- `bundle`
+- 可断言的计数或状态
+
+不要只产出“一个大功能”，要产出能被下游命令继续消费的中间产物。
+
+### 5. 每一步都要写清楚“不做什么”
+
+可测试的前提之一，是范围被严格封死。
+
+例如：
+- Step 12 Phase 1 只支持 `Transform / Sprite / Tags / Camera`
+- `Label / Animation / Physics / CustomScript` 默认不承诺支持
+- 只做单向 import，不做 round-trip
+
+如果不写清楚不做什么，测试边界就会不断膨胀。
+
+### 6. 自动化优先于人工验证
+
+顺序应该始终是：
+
+`Schema / Unit` → `CLI / Integration` → `Browser Visual` → `DevTools` → `Real Device`
+
+不要反过来。越靠后的测试越贵，越不适合承担“第一次发现问题”的责任。
+
+---
+
+## 测试层级约定
+
+| 层级 | 名称 | 入口 | 用途 |
+|------|------|------|------|
+| L0 | Unit | `pnpm test -- ...` | 纯逻辑 / 数据结构 / 零 GC 约束 |
+| L1 | Schema / CLI | `pnpm run ...` | 导入、校验、编译、报告 |
+| L2 | Browser Visual | `test-visual/*.html` | WebGL / 输入 / 音频 / 渲染结果 |
+| L3 | WX DevTools | `wx-project/` | 平台 API 适配、包体、文件系统 |
+| L4 | Real Device | 手机扫码 | 真机帧率、触摸、音频、中后台行为 |
+
+**切分规则**:
+- 新 step 最好只新增一个层级
+- L2 之前必须已有 L0/L1 支撑
+- L4 只做 smoke / 验收，不做第一现场排错
+
+---
+
+## Step 模板（建议统一）
+
+以后新增 step，尽量都按这个模板写：
+
+```text
+### Step N — 名称
+
+**目标**:
+只描述一个核心问题。
+
+**不包含**:
+明确列出这个 step 不打算解决的内容。
+
+**交付物**:
+- 文件
+- 命令
+- 中间产物
+
+**测试夹具**:
+- 最小输入
+- 最小场景
+- 最小资源
+
+**主测试入口**:
+pnpm test -- ...
+
+**通过标准**:
+- 机器可断言
+- 尽量避免“人工目测为主”
+
+**失败信号**:
+- 什么情况算失败
+- 失败时首先查看哪个 report / fixture
+```
+
+---
+
 # Phase 1 — 高性能运行时 + Canonical Format + 导入链路
 
 ## Part A：核心运行时
@@ -312,6 +437,16 @@ pnpm test -- tests/asset/bundle.test.ts
 5. 只注册 transformPlugin（不注册 spritePlugin）时，渲染代码不加载（tree-shaking 验证）
 ```
 
+**建议执行切片**:
+
+| 子切片 | 范围 | 主测试入口 | 通过标准 |
+|--------|------|------------|----------|
+| 10A | Engine tick + stop/start | `pnpm test -- tests/core/engine.test.ts` | `tick()` 推进 frameCount / fps 状态正确 |
+| 10B | Plugin 注册与执行顺序 | `pnpm test -- tests/core/plugin.test.ts` | `use()` 顺序正确，重复注册行为明确 |
+| 10C | Transform built-in plugin | `pnpm test -- tests/ecs/transform-system.test.ts` | 更新后 Transform 数据变化且 markChanged 正确 |
+| 10D | Sprite render integration | `test-visual/integration-test.html` | 浏览器中精灵可见、DrawCall 合理 |
+| 10E | tree-shaking smoke | `pnpm build` + bundle 检查 | 未 use 的 plugin 不进入主包 |
+
 ---
 
 ### 步骤依赖关系
@@ -467,6 +602,26 @@ pnpm run compile:scene -- --input ./tmp/canonical --output ./tmp/build
 # 在浏览器中加载编译场景，验证渲染结果
 ```
 
+**建议执行切片**:
+
+| 子切片 | 范围 | 主测试入口 | 通过标准 |
+|--------|------|------------|----------|
+| 12A | canonical schema + fixture | `membrane validate canonical --input ./fixtures/min-scene` | 最小 scene / prefab / assets / report 全通过 |
+| 12B | `.scene/.prefab` parser | `pnpm test -- tests/tools/cocos-importer/parser.test.ts` | 能稳定读出节点、组件、引用 |
+| 12C | component mapper | `pnpm test -- tests/tools/cocos-importer/mapper.test.ts` | `Transform / Sprite / Tags / Camera` 映射正确 |
+| 12D | import-report | `pnpm test -- tests/tools/cocos-importer/report.test.ts` | unsupported 组件不会静默丢失 |
+| 12E | import CLI | `pnpm run import:cocos -- --input ... --output ...` | 能稳定落 canonical 输出目录 |
+| 12F | validate CLI | `pnpm run validate:canonical -- --input ...` | schema、引用、parent 关系全通过 |
+| 12G | compile CLI | `pnpm run compile:scene -- --input ... --output ...` | 输出 `manifest.json` / `.wxpak` / `compile-report.json` |
+| 12H | runtime smoke load | 浏览器加载编译结果 | 编译场景能被 runtime 加载并渲染 |
+
+**建议出口条件**:
+- 不要求“支持很多组件”
+- 只要求“最小真实 Cocos demo 可以稳定导入、校验、编译、加载”
+- 先把链路打通，再扩组件覆盖率
+
+**不建议把 Step 12 当成单个大任务一次做完**。更合理的执行顺序是 `12A → 12B → 12C → 12D → 12E → 12F → 12G → 12H`。
+
 ---
 
 ### Step 13 — 运行时验证 + Benchmark
@@ -507,6 +662,21 @@ pnpm run compile:scene -- --input ./tmp/canonical --output ./tmp/build
 - 零 GC 验证: 连续运行 60 秒，GC 暂停 < 2ms
 - 若 Cocos 对照实验达到 **≥15% 性能提升**，可作为额外宣传数据，但不作为 Phase 1 出口条件
 
+**建议执行切片**:
+
+| 子切片 | 范围 | 主测试入口 | 通过标准 |
+|--------|------|------------|----------|
+| 13A | correctness harness | `pnpm run benchmark:correctness` | 场景加载、实体数、资源映射与预期一致 |
+| 13B | sprite stress | `pnpm run benchmark:sprites` | 固定场景下输出 FPS / DrawCall 报告 |
+| 13C | load benchmark | `pnpm run benchmark:load` | bundle 加载与 instantiate 时延可记录 |
+| 13D | GC / churn benchmark | `pnpm run benchmark:gc` | 连续运行不出现异常 GC 峰值 |
+| 13E | original vs membrane compare | `pnpm run benchmark:compare` | 若存在可对照场景，生成统一报告 |
+
+**注意**:
+- Step 13 的第一责任是“证明链路稳定”，不是“先证明性能领先”
+- 没有 correctness harness 的 benchmark 几乎没有解释价值
+- benchmark 报告必须可重复生成，不能只保留手工结论
+
 ---
 
 ### Step 14 — 微信小游戏适配 + 发布
@@ -535,6 +705,21 @@ pnpm run compile:scene -- --input ./tmp/canonical --output ./tmp/build
 2. 预览 → 手机扫码
 3. 验证: 渲染正确、触摸响应、音频播放、帧率达标
 ```
+
+**建议执行切片**:
+
+| 子切片 | 范围 | 主测试入口 | 通过标准 |
+|--------|------|------------|----------|
+| 14A | WxAdapter 启动 | 微信开发者工具 | 能启动 canvas + RAF + 文件读取 |
+| 14B | 渲染 / 输入 / 音频 parity | 微信开发者工具 | 基本功能与浏览器 smoke 一致 |
+| 14C | subpackage / bundle load | 微信开发者工具 | `manifest + wxpak` 能正确加载 |
+| 14D | 真机 smoke | 手机扫码 | 首屏可进、触摸正常、音频正常 |
+| 14E | 真机稳定性 | 手机运行 5-10 分钟 | 无明显泄漏、切后台行为正确 |
+
+**注意**:
+- Step 14 不应该第一次发现“导入产物结构错了”或“runtime load 错了”
+- 到 Step 14 时，L0/L1/L2 测试应该已经把大部分逻辑问题清掉
+- 真机阶段主要验证平台差异，而不是承担基础回归测试
 
 ---
 
