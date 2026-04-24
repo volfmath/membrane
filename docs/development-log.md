@@ -75,7 +75,7 @@
 - **完整导入管线** (Step 12D): `importCocosProject()` 函数，扫描项目目录、解析所有 scene、生成 canonical 输出 + assets 清单 + import report
 - **真实项目集成验证** (Step 12E): 用 mahjong 游戏项目 (D:\majonggame) 验证，3 个 scene / 199 entities / 146 unsupported components 全部正确导入、校验通过 (5 tests)
 
-**新增测试: 74 tests → 总计 258 tests 全通过**
+**Step 12A-E 新增测试: 74 tests**
 
 ### Cocos 导入发现
 
@@ -86,9 +86,16 @@
 | 真实项目规模 | mahjong: 3 scenes, 199 entities, 19 种不同组件类型 |
 | 支持率 | Transform/Sprite/Camera 正确映射; cc.Label/Widget/Button/Animation 等 Phase 1 不支持 |
 
+### 已完成 — Validate + Compile 工具链 (Step 12F–G)
+
+- **Validate CLI** (Step 12F): `validateCanonicalDir()` 扫描 canonical 目录，校验所有 scene/prefab/assets/report 文件，返回结构化校验结果 (5 tests)
+- **Scene Compiler** (Step 12G): `compileCanonicalDir()` 将 canonical scene 编译为 WXGE 二进制 bundle (.wxpak)，输出 manifest.json + compile-report.json (8 tests)
+- **E2E 管线测试**: import → validate → compile → BundleReader 读回 — mahjong 项目 3 个场景完整走通 (5 tests)
+
+**Step 12F-G 新增测试: 18 tests → 总计 276 tests 全通过**
+
 ### 下一步
 
-1. Step 12F-G: validate / compile CLI 命令
-2. Step 12H: Runtime smoke load — 编译场景在浏览器/微信加载
-3. `wx-smoke-webgl`: 主 canvas 直接 WebGL 渲染验证
-4. Step 13: 微信发布流程
+1. Step 12H: Runtime smoke load — 编译场景在浏览器/微信加载
+2. `wx-smoke-webgl`: 主 canvas 直接 WebGL 渲染验证
+3. Step 13: 微信发布流程

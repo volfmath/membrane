@@ -74,7 +74,7 @@ Membrane Runtime                    Membrane Runtime
 
 ## 实现进度
 
-**Phase 1 · Steps 1–12D 已完成** — 258 tests 全通过，真机 smoke 验证通过，真实 Cocos 项目导入验证通过
+**Phase 1 · Steps 1–12G 已完成** — 276 tests 全通过，真机 smoke 验证通过，真实 Cocos 项目 E2E 管线验证通过
 
 | Step | 模块 | 关键文件 | 测试 |
 |------|------|----------|------|
@@ -88,6 +88,8 @@ Membrane Runtime                    Membrane Runtime
 | 11 | 输入系统 | `src/input/input-manager.ts` — 多点触控, 手势检测, 零 GC | 28 |
 | 12A | Canonical Format | `src/canonical/` — 类型 + 校验器 + fixture | 40 |
 | 12B–D | Cocos 导入器 | `tools/cocos-importer/` — 解析 + 映射 + 报告 | 34 |
+| 12F | Validate 工具 | `tools/canonical/validate.ts` — canonical 目录校验 | 5 |
+| 12G | Scene Compiler | `tools/compiler/scene-compiler.ts` — canonical→WXGE bundle | 13 |
 
 ### 真机 Smoke 验证
 
@@ -111,10 +113,10 @@ Membrane Runtime                    Membrane Runtime
 | 实体数 | 199 |
 | 组件类型 | 19 种 (支持 3 / 不支持 16) |
 | 校验 | 全部通过 canonical format validation |
+| E2E | import → validate → compile → bundle read 全通过 |
 
 ### 下一步
 
-- Step 12F-G: validate / compile CLI 命令
 - Step 12H: Runtime smoke load — 编译场景在浏览器/微信加载
 - `wx-smoke-webgl`: 主 canvas 直接 WebGL 渲染验证
 - Step 13: 微信发布流程
@@ -123,7 +125,7 @@ Membrane Runtime                    Membrane Runtime
 
 ```bash
 pnpm install          # 安装依赖
-pnpm test             # 运行 258 个单元测试
+pnpm test             # 运行 276 个单元测试
 pnpm typecheck        # TypeScript 严格模式检查
 pnpm build            # 构建运行时库
 pnpm build:wx-smoke   # 构建 bootstrap smoke → wx-project/dist/index.js
