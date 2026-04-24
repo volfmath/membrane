@@ -13,6 +13,8 @@
     "build:wx-engine": "esbuild src/wx-smoke-engine.cts --bundle --outfile=wx-project/dist/index.js --format=cjs --platform=neutral --target=es6",
     "build:wx-scene": "esbuild src/wx-smoke-scene.cts --bundle --outfile=wx-project/dist/index.js --format=cjs --platform=neutral --target=es6",
     "build:compile-fixture": "npx tsx tools/compile-fixture.ts",
+    "mcp": "npx tsx tools/mcp/index.ts",
+    "mcp:demo": "npx tsx tools/mcp/index.ts --project ./tests/fixtures/mcp-demo",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -20,12 +22,16 @@
     "smoke:wx:local": "corepack pnpm build:wx-smoke && powershell -ExecutionPolicy Bypass -File tools/wx-smoke/Invoke-LocalSmoke.ps1"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "esbuild": "^0.25.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.1.0"
+    "vitest": "^3.1.0",
+    "zod": "^4.3.6"
   },
   "license": "MIT",
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

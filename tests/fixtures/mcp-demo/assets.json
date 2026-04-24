@@ -1,0 +1,22 @@
+{
+  "format": "membrane.assets",
+  "version": 1,
+  "scenes": [
+    { "id": "level_01", "path": "scenes/level_01.scene.json" }
+  ],
+  "atlases": [
+    {
+      "id": "main",
+      "image": "textures/main.png",
+      "width": 512,
+      "height": 512,
+      "frames": [
+        { "id": "player_idle", "x": 0, "y": 0, "width": 64, "height": 64 },
+        { "id": "slime_idle", "x": 64, "y": 0, "width": 32, "height": 32 }
+      ]
+    }
+  ],
+  "audio": [
+    { "id": "bgm.main", "path": "audio/bgm.mp3", "kind": "bgm" }
+  ]
+}

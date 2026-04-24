@@ -157,7 +157,32 @@
 - **发布检查清单** (14C): `docs/wx-publish-checklist.md`
   - 构建命令、DevTools 预览、真机扫码、验证清单、已知限制
 
+### 已完成 — MCP 协议层 (Step 15)
+
+- **ProjectDataManager** (15A): `tools/mcp/project-data.ts` — Canonical 目录 CRUD 层
+  - 场景: list / get / save / create / delete
+  - 实体: get / create / update / delete (在场景内操作)
+  - 事件: addEvent
+  - 资源: getAssets
+  - 校验: validate (复用 canonical validator)
+  - 概览: getManifest (场景列表 + 实体统计 + 资源状态)
+  - 27 单元测试
+
+- **MCP Server** (15B): `tools/mcp/server.ts` — 3 Resources + 6 Tools
+  - Resources: project manifest, scenes/{sceneId} (ResourceTemplate), assets
+  - Tools: create_scene, create_entity, update_entity, delete_entity, add_event, validate
+  - 使用 `@modelcontextprotocol/sdk` + `zod` schema 校验
+  - stdio 传输 (兼容 Claude Desktop / Cursor / VS Code)
+
+- **CLI 入口** (15C): `tools/mcp/index.ts` — `--project` 参数指定项目目录
+  - `pnpm mcp` / `pnpm mcp:demo`
+
+- **集成测试** (15D): `tests/tools/mcp/server.test.ts` — InMemoryTransport round-trip
+  - 14 个测试覆盖: listResources, readResource, listResourceTemplates, listTools, 全部 6 个 tool, full round-trip (create scene → add entities → add event → validate → verify manifest)
+
+**Step 15 新增测试: 41 tests (27 + 14) → 总计 354 tests 全通过**
+
 ### 下一步
 
 1. 真机验证 wx-smoke-engine 和 wx-smoke-scene
-2. Step 15: Phase 2 方向规划
+2. Step 16: AI 连接器

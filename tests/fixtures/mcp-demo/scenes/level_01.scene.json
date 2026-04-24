@@ -1,0 +1,75 @@
+{
+  "format": "membrane.scene",
+  "version": 1,
+  "sceneId": "level_01",
+  "name": "Level 01",
+  "entities": [
+    {
+      "id": "player",
+      "name": "Player",
+      "parent": null,
+      "enabled": true,
+      "components": {
+        "Transform": {
+          "x": 100,
+          "y": 200,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Sprite": {
+          "atlas": "main",
+          "frame": "player_idle",
+          "order": 10
+        }
+      }
+    },
+    {
+      "id": "camera",
+      "name": "Main Camera",
+      "parent": null,
+      "enabled": true,
+      "components": {
+        "Transform": {
+          "x": 0,
+          "y": 0
+        },
+        "Camera": {
+          "mode": "orthographic",
+          "size": 640,
+          "near": -1,
+          "far": 1
+        }
+      }
+    },
+    {
+      "id": "enemy_01",
+      "name": "Slime",
+      "parent": null,
+      "enabled": true,
+      "components": {
+        "Transform": {
+          "x": 300,
+          "y": 150,
+          "scaleX": 0.8,
+          "scaleY": 0.8
+        },
+        "Sprite": {
+          "atlas": "main",
+          "frame": "slime_idle",
+          "order": 5
+        },
+        "Tags": {
+          "values": ["enemy", "killable"]
+        }
+      }
+    }
+  ],
+  "events": [
+    {
+      "id": "pickup_coin",
+      "on": "tag:player touch tag:collectible",
+      "do": ["destroy:target", "score:+1"]
+    }
+  ]
+}
