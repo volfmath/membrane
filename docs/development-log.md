@@ -111,7 +111,30 @@
   - `pnpm build:wx-webgl` 构建 → `wx-project/dist/index.js`
   - 验证要点: 主 canvas WebGL 在真机是否工作 (之前跨 canvas 方案失败)
 
+### 已完成 — Runtime Verification + Benchmark (Step 13)
+
+- **Correctness Harness** (13A): round-trip 正确性验证、多场景加载、大场景 (200/500 实体)、Float32 精度边界、schema 默认值、真实项目 E2E 加载 (10 tests)
+- **ECS Performance** (13C): entity creation (50k=0.7ms)、component access (10k×2=1.4ms)、field read (10k=0.035ms)、query iterate (5k/10k=0.036ms)、system update (3 systems 10k=0.1ms) (7 tests)
+- **Entity Churn** (13D): 600-frame create/destroy cycle (100/frame=27ms)、generation 正确性、SparseSet add/remove stability、高频 create/destroy 无泄漏 (4 tests)
+- **Bundle Load** (13E): write 50 scenes (0.05ms)、read 50 scenes (0.6ms)、loadSceneData (50 entities=0.09ms)、loadSceneFromBundle (0.1ms)、bundle size (178 bytes/entity) (5 tests)
+- **Sprite Stress** (13B): `test-visual/sprite-stress.html` Canvas2D 占位，WebGL 版需 runtime browser bundle
+
+**Step 13 新增测试: 26 tests → 总计 313 tests 全通过**
+
+#### Benchmark 结果摘要
+
+| 指标 | 数值 |
+|------|------|
+| Entity creation (50000) | 0.7ms |
+| Component add + field write (10000×2) | 1.4ms |
+| Field read throughput (10000) | 0.035ms |
+| Query iterate (5000/10000) | 0.036ms |
+| World.update (3 systems, 10000 entities) | 0.1ms |
+| Scene load from bundle (50 entities) | 0.1ms |
+| 600-frame churn (100 create+destroy/frame) | 27ms |
+| Bundle size | ~178 bytes/entity |
+
 ### 下一步
 
-1. Step 13: 运行时验证 + Benchmark
-2. Step 14: 微信发布流程
+1. Step 14: 微信发布流程
+2. wx-smoke-imported-scene: 导入场景真机渲染验证

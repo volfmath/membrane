@@ -74,7 +74,7 @@ Membrane Runtime                    Membrane Runtime
 
 ## 实现进度
 
-**Phase 1 · Steps 1–12H 已完成** — 287 tests 全通过，真机 smoke 验证通过，真实 Cocos 项目 E2E 管线验证通过
+**Phase 1 · Steps 1–13 已完成** — 313 tests 全通过，真机 smoke 验证通过，真实 Cocos 项目 E2E 管线验证通过
 
 | Step | 模块 | 关键文件 | 测试 |
 |------|------|----------|------|
@@ -91,6 +91,7 @@ Membrane Runtime                    Membrane Runtime
 | 12F | Validate 工具 | `tools/canonical/validate.ts` — canonical 目录校验 | 5 |
 | 12G | Scene Compiler | `tools/compiler/scene-compiler.ts` — canonical→WXGE bundle | 13 |
 | 12H | Scene Loader | `src/canonical/scene-loader.ts` — bundle→ECS World 实体加载 | 11 |
+| 13 | Benchmark | `tests/benchmark/` — 正确性验证 + ECS 性能基准 + 实体压力测试 | 26 |
 
 ### 真机 Smoke 验证
 
@@ -117,16 +118,25 @@ Membrane Runtime                    Membrane Runtime
 | 校验 | 全部通过 canonical format validation |
 | E2E | import → validate → compile → bundle read 全通过 |
 
+### Benchmark 结果
+
+| 指标 | 数值 |
+|------|------|
+| Entity creation (50000) | 0.7ms |
+| World.update (3 systems, 10000 entities) | 0.1ms |
+| Query iterate (5000/10000) | 0.036ms |
+| Scene load from bundle (50 entities) | 0.1ms |
+| Bundle size | ~178 bytes/entity |
+
 ### 下一步
 
-- Step 13: 运行时验证 + Benchmark
 - Step 14: 微信发布流程
 
 ## 命令
 
 ```bash
 pnpm install          # 安装依赖
-pnpm test             # 运行 287 个单元测试
+pnpm test             # 运行 313 个单元测试
 pnpm typecheck        # TypeScript 严格模式检查
 pnpm build            # 构建运行时库
 pnpm build:wx-smoke   # 构建 bootstrap smoke → wx-project/dist/index.js

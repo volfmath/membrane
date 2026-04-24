@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Membrane Sprite Stress Test</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d1117; color: #e6edf3; font-family: monospace; }
+  canvas { display: block; }
+  #controls {
+    position: fixed; top: 0; left: 0; right: 0;
+    background: rgba(13,17,23,0.9); padding: 8px 16px;
+    display: flex; gap: 16px; align-items: center; z-index: 10;
+  }
+  button {
+    background: #238636; color: #fff; border: none; padding: 6px 14px;
+    border-radius: 4px; cursor: pointer; font-family: monospace;
+  }
+  button:hover { background: #2ea043; }
+  button.active { background: #1f6feb; }
+  #stats { color: #8b949e; }
+</style>
+</head>
+<body>
+<div id="controls">
+  <button onclick="setCount(1000)" id="b1k">1K</button>
+  <button onclick="setCount(5000)" id="b5k">5K</button>
+  <button onclick="setCount(10000)" id="b10k">10K</button>
+  <span id="stats">Loading...</span>
+</div>
+<canvas id="c"></canvas>
+<script>
+// Placeholder: requires Membrane runtime bundle (Engine + SpriteBatcher + World)
+// to be built as a browser-compatible bundle first.
+//
+// TODO (Step 13B full implementation):
+// 1. Build Membrane runtime as browser UMD/ESM bundle
+// 2. Import Engine, World, SpriteBatcher, WebGLDevice
+// 3. Create ECS entities with Transform + Sprite components
+// 4. Register MovementSystem that updates positions each frame
+// 5. Render via SpriteBatcher
+// 6. Display real-time FPS, DrawCall, entity count
+
+var canvas = document.getElementById('c');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+var ctx = canvas.getContext('2d');
+var sprites = [];
+var targetCount = 1000;
+var fps = 0, frames = 0, lastFps = performance.now();
+
+function setCount(n) {
+  targetCount = n;
+  while (sprites.length > n) sprites.pop();
+  while (sprites.length < n) {
+    sprites.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      vx: (60 + Math.random() * 120) * (Math.random() > 0.5 ? 1 : -1),
+      vy: (60 + Math.random() * 120) * (Math.random() > 0.5 ? 1 : -1),
+      size: 4 + Math.random() * 8,
+      color: 'hsl(' + (Math.random() * 360) + ',70%,60%)',
+    });
+  }
+  document.querySelectorAll('button').forEach(function(b) { b.classList.remove('active'); });
+  var btn = document.getElementById('b' + (n/1000) + 'k');
+  if (btn) btn.classList.add('active');
+}
+
+var lastTime = 0;
+function tick(t) {
+  var dt = lastTime ? (t - lastTime) / 1000 : 0.016;
+  if (dt > 0.05) dt = 0.05;
+  lastTime = t;
+
+  for (var i = 0; i < sprites.length; i++) {
+    var s = sprites[i];
+    s.x += s.vx * dt; s.y += s.vy * dt;
+    if (s.x < 0 || s.x > canvas.width) s.vx = -s.vx;
+    if (s.y < 0 || s.y > canvas.height) s.vy = -s.vy;
+  }
+
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  for (var i = 0; i < sprites.length; i++) {
+    var s = sprites[i];
+    ctx.fillStyle = s.color;
+    ctx.fillRect(s.x, s.y, s.size, s.size);
+  }
+
+  frames++;
+  if (t - lastFps >= 1000) {
+    fps = frames / ((t - lastFps) / 1000);
+    frames = 0; lastFps = t;
+  }
+  document.getElementById('stats').textContent =
+    'FPS: ' + fps.toFixed(1) + ' | Sprites: ' + sprites.length +
+    ' | Mode: Canvas2D (placeholder — WebGL pending)';
+
+  requestAnimationFrame(tick);
+}
+
+setCount(1000);
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
