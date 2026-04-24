@@ -1,0 +1,21 @@
+{
+  "name": "membrane",
+  "version": "0.1.0",
+  "description": "The Runtime Layer for AI-Native Games",
+  "type": "module",
+  "main": "dist/membrane.js",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --outfile=dist/membrane.js --format=esm --platform=neutral --target=es2020",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.1.0"
+  },
+  "license": "MIT",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}
