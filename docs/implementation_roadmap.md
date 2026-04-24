@@ -1,31 +1,35 @@
-# 实现路线图 & 测试策略
+# 实现路线图
 
-> 每一步都必须可独立测试验证，不依赖后续步骤。
+> Phase 1 做运行时和导出工具，让现有小游戏无代码修改提升 20% 性能。
+> Phase 2 做 AI-Native 创作平台，用 MCP 连接器替代传统编辑器。
+> 每一步都必须可独立测试验证。
 
 ---
 
-## Step 1 — 项目脚手架
+# Phase 1 — 高性能运行时 + 导出工具
 
-**目标**: 搭建 TypeScript 项目基础设施，确保构建和测试流程跑通。
+## Part A：核心运行时
+
+### Step 1 — 项目脚手架
+
+**目标**: TypeScript + esbuild + Vitest 基础设施跑通。
 
 **交付物**:
-- `package.json` — 项目元数据与脚本
-- `tsconfig.json` — TypeScript 配置（target: ES2020, module: ESNext）
-- `vitest.config.ts` — 测试框架配置
-- `src/index.ts` — 空入口文件
-- `tests/sanity.test.ts` — 第一个测试用例
+- `package.json` / `tsconfig.json` / `vitest.config.ts`
+- `src/index.ts` — 空入口
+- `tests/sanity.test.ts` — 第一个测试
 
 **技术选型**:
 
 | 工具 | 选择 | 理由 |
 |------|------|------|
-| 构建 | esbuild | 极快，适合库打包，输出单文件 JS |
-| 测试 | vitest | 原生 TS 支持，API 兼容 Jest |
-| 格式化 | 无（后续按需加） | 最小化初始依赖 |
+| 构建 | esbuild | 极快，输出单文件 JS，适合库打包 |
+| 测试 | vitest | 原生 TS，兼容 Jest API |
+| 包管理 | pnpm | 快速、节省磁盘 |
 
 **目录结构**:
 ```
-wxge/
+membrane/
 ├── src/
 │   ├── math/
 │   ├── ecs/
@@ -39,7 +43,10 @@ wxge/
 │   ├── ecs/
 │   ├── renderer/
 │   └── asset/
-├── test-visual/          # 浏览器视觉测试页面
+├── test-visual/          # 浏览器视觉测试页
+├── tools/                # Phase 1 导出工具
+│   ├── cocos-exporter/
+│   └── unity-exporter/
 ├── docs/
 ├── package.json
 ├── tsconfig.json
@@ -48,357 +55,245 @@ wxge/
 
 **测试验证**:
 ```bash
-npm install
-npm run build   # esbuild 编译成功，输出 dist/wxge.js
-npm test        # vitest 跑通 sanity.test.ts
+pnpm install
+pnpm build    # esbuild → dist/membrane.js
+pnpm test     # vitest 1 passed
 ```
 
-**完成标准**:
-- [x] `npm run build` 零错误输出 `dist/wxge.js`
-- [x] `npm test` 通过，输出 1 passed
+**完成标准**: `pnpm build` 零错误，`pnpm test` 通过。
 
 ---
 
-## Step 2 — Math 库
+### Step 2 — Math 库（零 GC）
 
-**目标**: 实现零 GC 的向量/矩阵运算库，所有操作写入 `out` 参数。
+**目标**: 向量/矩阵运算库，所有操作写入 `out` 参数，不分配新对象。
 
 **前置依赖**: Step 1
 
-**交付物**:
-- `src/math/vec2.ts`
-- `src/math/vec3.ts`
-- `src/math/mat4.ts`
-- `src/math/math-pool.ts` — 对象池
-- `src/math/index.ts` — 统一导出
-- `tests/math/*.test.ts`
+**交付物**: `src/math/` (vec2, vec3, mat4, math-pool) + 单元测试
 
-**关键设计决策**:
-- 所有 Vec/Mat 内部用 `Float32Array` 存储
-- 所有运算函数签名：`static op(a, b, out): void` — 不返回新对象
-- `MathPool` 提供 `get()` / `release()` 管理临时变量
-- 精度容差常量 `EPSILON = 1e-6`
+**关键设计**:
+- `Float32Array` 内部存储
+- 所有运算: `static op(out, a, b): void` — 零 GC
+- `MathPool` cursor 分配，帧末重置
+- `EPSILON = 1e-6`
 
-**测试验证**:
+**测试**:
 ```bash
-npm test -- tests/math/
+pnpm test -- tests/math/
 ```
 
-测试用例覆盖：
+覆盖：
 - Vec2/Vec3: add, sub, scale, dot, cross, normalize, length, lerp
-- Mat4: identity, multiply, translate, rotate, scale, invert, perspective, ortho, lookAt
-- Pool: get/release 循环不泄漏，pool 耗尽时的行为
-- 边界值: 零向量 normalize、奇异矩阵 invert
-- 精度: 连续运算累积误差在 EPSILON 范围内
-
-**完成标准**:
-- [x] 所有单元测试通过
-- [x] 无任何 `new Vec3()` / `new Mat4()` 出现在运算函数中（grep 验证）
-- [x] Pool 压力测试（10000 次 get/release）无内存增长
+- Mat4: identity, multiply, translate, rotate, scale, invert, perspective, ortho
+- Pool: 10000 次 get/release 无内存增长
+- 边界: 零向量 normalize、奇异矩阵 invert
 
 ---
 
-## Step 3 — ECS EntityManager
+### Step 3 — ECS EntityManager
 
-**目标**: 实现实体管理器 — 创建、销毁、ID 复用与 generation 防悬空。
+**目标**: 实体创建、销毁、ID 复用、generation 防悬空引用。
 
 **前置依赖**: Step 1
 
-**交付物**:
-- `src/ecs/entity-manager.ts`
-- `src/ecs/types.ts` — EntityId 类型、常量
-- `tests/ecs/entity-manager.test.ts`
+**交付物**: `src/ecs/entity-manager.ts` + `src/ecs/types.ts` + 单元测试
 
-**关键设计决策**:
+**关键设计**:
 - EntityId = u32: 高 16 位 generation，低 16 位 index
-- 预分配容量（默认 65536），禁止动态扩容
-- 空闲列表（freeList）复用已销毁实体的 index
-- `isAlive(id)` 通过比对 generation 判断
+- 预分配容量 65536，freeList LIFO 复用
+- `INVALID_ENTITY = 0xFFFFFFFF`
 
-**测试验证**:
+**测试**:
 ```bash
-npm test -- tests/ecs/entity-manager.test.ts
+pnpm test -- tests/ecs/entity-manager.test.ts
 ```
 
-测试用例覆盖：
-- 创建实体，ID 递增
-- 销毁实体后，再创建复用相同 index，但 generation 不同
+覆盖：
+- 创建 → ID 递增
+- 销毁 → 复用 index，generation 递增
 - `isAlive` 对已销毁实体返回 false
-- `isAlive` 对 generation 不匹配的 ID 返回 false
-- 容量耗尽时 `create()` 抛异常或返回 INVALID_ENTITY
-- 重复销毁同一实体不崩溃
-- 批量创建/销毁循环，验证 freeList 正确性
-
-**完成标准**:
-- [x] 所有单元测试通过
-- [x] 创建 65536 个实体无错误
-- [x] 销毁后复用验证 generation 递增
+- 容量耗尽行为
+- 批量创建/销毁循环正确性
 
 ---
 
-## Step 4 — ECS ComponentStorage
+### Step 4 — ECS ComponentStorage（SoA）
 
-**目标**: 实现 SoA 布局的 Component 存储，支持注册、添加、移除、查询。
+**目标**: SoA 布局的 Component 存储，支持注册、添加、移除、Archetype 位掩码。
 
 **前置依赖**: Step 3
 
-**交付物**:
-- `src/ecs/component-storage.ts` — 泛型 SoA 存储
-- `src/ecs/component-registry.ts` — Component 类型注册表
-- `src/ecs/archetype.ts` — Archetype 位掩码管理
-- `tests/ecs/component-storage.test.ts`
+**交付物**: `src/ecs/component-storage.ts` + `component-registry.ts` + `archetype.ts` + 单元测试
 
-**关键设计决策**:
-- 每种 Component 用唯一 `componentId: number`（0-63，支持 64 种组件类型，用 BigInt64 位掩码）
-- Component Schema 定义字段名和 TypedArray 类型：`{ posX: Float32Array, posY: Float32Array, ... }`
-- Archetype 用位掩码表示实体拥有的 Component 集合
-- `addComponent(entity, componentId)` — 设置位掩码，初始化 SoA 数据
-- `removeComponent(entity, componentId)` — 清除位掩码
-- `getStorage<T>(componentId)` — 返回对应 SoA 数组引用
+**关键设计**:
+- Component Schema 定义字段名和 TypedArray 类型
+- `componentId: 0-63`，BigInt 64 位掩码
+- Archetype = 实体的 Component 组合位掩码
+- `getField()` 返回 TypedArray 视图，直接按 entityIndex 访问
 
-**测试验证**:
+**测试**:
 ```bash
-npm test -- tests/ecs/component-storage.test.ts
+pnpm test -- tests/ecs/component-storage.test.ts
 ```
 
-测试用例覆盖：
-- 注册 Transform Component，验证 SoA 数组已分配
-- 添加 Component 到实体，写入数据，读回验证
-- 移除 Component，验证位掩码清除
-- 查询某实体的 Archetype 位掩码
-- 多种 Component 组合：实体同时拥有 Transform + Sprite
-- 对已销毁实体操作的行为
-- 内存布局验证：连续实体的同字段数据在内存中连续
-
-**完成标准**:
-- [x] 所有单元测试通过
-- [x] SoA 布局验证：posX[0], posX[1], posX[2]... 内存连续
-- [x] 位掩码正确反映 Component 组合
+覆盖：
+- 注册 Component → SoA 数组已分配
+- 添加 / 移除 Component → 位掩码正确更新
+- 连续实体的同字段数据内存连续（SoA 验证）
+- 多种 Component 组合
 
 ---
 
-## Step 5 — ECS System Scheduler
+### Step 5 — ECS System Scheduler + World
 
-**目标**: 实现 System 注册、Phase 分组、Archetype Query 过滤与调度执行。
+**目标**: System 注册、Phase 分组、Archetype Query、World 门面。
 
 **前置依赖**: Step 4
 
-**交付物**:
-- `src/ecs/system.ts` — System 接口与 SystemPhase 枚举
-- `src/ecs/query.ts` — ArchetypeQuery 构建器
-- `src/ecs/scheduler.ts` — 按 Phase 排序执行 System
-- `src/ecs/world.ts` — World 门面类（组合 EntityManager + Storage + Scheduler）
-- `tests/ecs/system.test.ts`
-- `tests/ecs/query.test.ts`
+**交付物**: `src/ecs/system.ts` + `query.ts` + `scheduler.ts` + `world.ts` + 单元测试
 
-**关键设计决策**:
-- System 是一个接口：`{ query, phase, update(world, dt) }`
-- 6 个 Phase 按固定顺序执行：PreUpdate → Update → PostUpdate → PreRender → Render → PostRender
-- 同一 Phase 内的 System 按注册顺序执行
-- Query 构建器: `world.query().with(Transform, Sprite).without(Hidden).build()`
-- Query 结果是匹配实体的迭代器（遍历所有实体，检查位掩码）
+**关键设计**:
+- 6 Phase: PreUpdate → Update → PostUpdate → PreRender → Render → PostRender
+- Query: `with(A, B).without(C)` → BigInt 位掩码匹配
+- World 组合 EntityManager + ComponentStorage + Scheduler
+- Scheduler 预分配 matchBuffer，遍历实体时零 GC
 
-**测试验证**:
+**测试**:
 ```bash
-npm test -- tests/ecs/system.test.ts tests/ecs/query.test.ts
+pnpm test -- tests/ecs/
 ```
 
-测试用例覆盖：
-- 注册 3 个不同 Phase 的 System，验证执行顺序
-- Query with(A, B) 只匹配同时拥有 A 和 B 的实体
-- Query without(C) 排除拥有 C 的实体
-- 实体动态添加/移除 Component 后，Query 结果即时更新
-- `world.update(dt)` 调用所有 System，传入正确的 dt
-- System 内部通过 Query 迭代实体并修改 Component 数据
-- 空世界（无实体）调用 update 不崩溃
-
-**完成标准**:
-- [x] 所有单元测试通过
-- [x] Phase 执行顺序严格正确
-- [x] Query 过滤逻辑正确，增删 Component 后实时反映
+覆盖：
+- 3 个不同 Phase 的 System，验证执行顺序
+- Query with/without 过滤逻辑
+- 动态增删 Component 后 Query 实时更新
+- World.update(dt) 全链路
 
 ---
 
-## Step 6 — Platform Adapter 抽象层
+### Step 6 — Platform Adapter
 
-**目标**: 定义平台抽象接口，实现 BrowserAdapter（用于开发测试），预留 WxAdapter 接口。
+**目标**: 平台抽象接口 + BrowserAdapter 实现。
 
 **前置依赖**: Step 1
 
-**交付物**:
-- `src/platform/platform-adapter.ts` — 抽象接口
-- `src/platform/browser-adapter.ts` — 浏览器实现
-- `src/platform/wx-adapter.ts` — 微信小游戏实现（接口骨架，方法抛 TODO）
-- `test-visual/platform-test.html` — 浏览器测试页面
+**交付物**: `src/platform/` (platform-adapter, browser-adapter, wx-adapter 骨架) + 浏览器测试页
 
-**关键设计决策**:
-- 接口方法：`getCanvas()`, `getWebGLContext()`, `readFile()`, `request()`, `onMemoryWarning()`, `getPerformance()`
-- BrowserAdapter: 使用标准 DOM API（document.createElement, fetch, canvas.getContext）
-- WxAdapter: 使用 wx.* API（后续在微信开发者工具中测试）
-- 通过工厂函数 `createAdapter()` 自动检测环境
+**关键设计**:
+- 接口: `getCanvas()`, `getWebGLContext()`, `readFile()`, `loadImage()`, `now()`, `requestAnimationFrame()`
+- 触摸输入: `onTouchStart/Move/End` — Phase 1 需要交互
+- BrowserAdapter: 标准 DOM API
+- WxAdapter: `wx.*` API 骨架
+- 工厂函数: `createPlatformAdapter()` 自动检测环境
 
-**测试验证**:
+**测试**:
 ```
-浏览器打开 test-visual/platform-test.html，验证：
-1. 页面显示一个 Canvas 元素
-2. 控制台输出 "WebGL context created successfully"
-3. 控制台输出 Canvas 尺寸信息
+浏览器打开 test-visual/platform-test.html:
+1. Canvas 元素显示
+2. 控制台: "WebGL context created"
+3. 触摸/鼠标事件回调触发
 ```
-
-**完成标准**:
-- [x] BrowserAdapter 能获取 Canvas 和 WebGL Context
-- [x] 接口定义完整，WxAdapter 骨架编译通过
-- [x] 浏览器测试页面能正常运行
 
 ---
 
-## Step 7 — WebGL Device + 状态缓存
+### Step 7 — WebGL Device + 状态缓存
 
-**目标**: 封装 WebGL Context，实现状态缓存（避免冗余 GL 调用），跑通最基本的渲染。
+**目标**: 封装 WebGL Context，状态缓存避免冗余 GL 调用。
 
 **前置依赖**: Step 6
 
-**交付物**:
-- `src/renderer/webgl-device.ts` — WebGL 上下文封装
-- `src/renderer/gl-state-cache.ts` — GL 状态缓存
-- `src/renderer/shader.ts` — Shader 编译/链接工具
-- `test-visual/webgl-test.html` — 视觉测试页
+**交付物**: `src/renderer/` (webgl-device, gl-state-cache, shader) + 浏览器测试页
 
-**关键设计决策**:
-- 优先 WebGL2，自动降级 WebGL1
-- 状态缓存项：bound textures, blend state, depth/stencil, viewport, current program
-- 每次 `setState()` 先 diff，相同状态跳过 GL 调用
-- Shader 编译错误统一包装，输出可读错误信息
+**关键设计**:
+- 优先 WebGL2，自动降级 WebGL1（能力检测）
+- GLStateCache: bound textures, blend, depth, viewport, program
+- `setState()` 先 diff，相同状态跳过 GL 调用
+- Shader 编译错误统一包装
 
-**测试验证**:
+**测试**:
 ```
-浏览器打开 test-visual/webgl-test.html，验证：
-1. 整屏显示指定颜色（如：cornflower blue #6495ED）— 证明 clearColor 工作
-2. 控制台输出 WebGL 版本信息
-3. 控制台输出 GL 扩展支持列表
+浏览器打开 test-visual/webgl-test.html:
+1. 整屏 cornflower blue (#6495ED) — clearColor 工作
+2. 控制台: WebGL 版本 + GL 扩展列表
 ```
-
-**完成标准**:
-- [x] 浏览器中看到纯色画面
-- [x] 状态缓存逻辑正确（可通过计数验证跳过的 GL 调用数）
-- [x] Shader 编译/链接成功，语法错误能正确报错
 
 ---
 
-## Step 8 — SpriteBatcher（2D 核心）
+### Step 8 — SpriteBatcher
 
-**目标**: 实现 2D 精灵批渲染器，能在屏幕上绘制纹理四边形。
+**目标**: 2D 精灵批渲染器，合批减少 DrawCall。
 
-**前置依赖**: Step 2（Mat4 投影矩阵）, Step 7
+**前置依赖**: Step 2 (Mat4), Step 7
 
-**交付物**:
-- `src/renderer/sprite-batcher.ts` — 批渲染器
-- `src/renderer/texture.ts` — 纹理加载/管理
-- `src/renderer/default-shaders.ts` — 内置 sprite shader
-- `test-visual/sprite-test.html` — 视觉测试页
+**交付物**: `src/renderer/` (sprite-batcher, texture, default-shaders) + 浏览器测试页
 
-**关键设计决策**:
-- 预分配顶点缓冲：`MAX_SPRITES = 2048`，每精灵 4 顶点 × 5 属性（x,y,u,v,color）
-- 索引缓冲预生成（0,1,2, 0,2,3 模式）
-- Flush 触发条件：纹理切换 / Blend 变化 / 缓冲区满
-- 使用 `gl.bufferSubData` 更新顶点数据（避免重新分配）
-- Sprite 默认 shader：position + texcoord + vertex color
+**关键设计**:
+- MAX_SPRITES = 2048，每精灵 4 顶点 × 5 float (x,y,u,v,color)
+- 索引缓冲预生成 (0,1,2, 0,2,3)
+- Flush 条件: 纹理切换 / Blend 变化 / 缓冲区满
+- `bufferSubData` 更新（不重新分配）
+- Color: ABGR u32 pack
 
-**测试验证**:
+**测试**:
 ```
-浏览器打开 test-visual/sprite-test.html，验证：
-1. 屏幕上显示一个白色方块（纯色纹理，1x1 白像素）
-2. 显示多个不同颜色的方块（顶点着色）
-3. 显示一张加载的 PNG 纹理
-4. 控制台输出 DrawCall 计数（验证批合并生效）
+浏览器打开 test-visual/sprite-test.html:
+1. 白色方块（1x1 纹理）
+2. 多色方块（顶点着色）
+3. PNG 纹理精灵
+4. 控制台: DrawCall = 1（同纹理合批验证）
 ```
-
-**完成标准**:
-- [x] 能渲染纯色方块
-- [x] 能渲染纹理精灵
-- [x] 多个相同纹理精灵合并为 1 个 DrawCall
-- [x] 纹理切换时正确 flush
 
 ---
 
-## Step 9 — Bundle 格式（二进制资源包）
+### Step 9 — Bundle 格式
 
-**目标**: 实现自定义二进制 Bundle 格式的写入和读取。
+**目标**: 自定义二进制 Bundle 格式 — 写入（构建工具侧）+ 读取（运行时侧）。
 
 **前置依赖**: Step 1
 
-**交付物**:
-- `src/asset/bundle-format.ts` — 二进制格式常量与类型
-- `src/asset/bundle-writer.ts` — 序列化（构建工具侧）
-- `src/asset/bundle-reader.ts` — 反序列化（运行时侧）
-- `src/asset/asset-manager.ts` — 资源管理器骨架
-- `tests/asset/bundle.test.ts`
+**交付物**: `src/asset/` (bundle-format, bundle-writer, bundle-reader, asset-manager) + 单元测试
 
-**关键设计决策**:
-- Magic number: `0x57584745` ("WXGE")
-- Header 32 bytes: magic + version + flags + asset_count + toc_offset + data_offset
-- TOC 条目：asset_id (u32) + type (u8) + offset (u32) + size (u32) = 13 bytes/条目
-- Asset 类型枚举：Texture=1, Audio=2, Scene=3, Animation=4, Shader=5
-- Reader 先解析 Header + TOC（索引），按需读取 Data Section
+**关键设计**:
+- Magic: `0x57584745` ("WXGE")
+- Header 32B + TOC 13B × N + Data Section
+- Little-Endian
+- 零拷贝: `getAssetData()` 返回 `Uint8Array` 视图
+- AssetType: Texture=1, Audio=2, Scene=3, Animation=4, Shader=5, Binary=6, JSON=7
 
-**测试验证**:
+**测试**:
 ```bash
-npm test -- tests/asset/bundle.test.ts
+pnpm test -- tests/asset/bundle.test.ts
 ```
 
-测试用例覆盖：
-- 创建 Bundle（含 3 个不同类型 asset），写入 ArrayBuffer
-- 从 ArrayBuffer 读取，验证 Header 解析正确
-- TOC 条目数量和类型匹配
-- 每个 Asset 数据读出与原始数据 byte-by-byte 一致
-- Magic number 错误时抛异常
-- 版本号不匹配时的处理
-- 空 Bundle（0 个 asset）的边界情况
-
-**完成标准**:
-- [x] 写入→读取 round-trip 完全一致
-- [x] 错误格式检测正常工作
-- [x] 所有单元测试通过
+覆盖：Write → Read round-trip、Magic 校验、空 Bundle 边界
 
 ---
 
-## Step 10 — 集成：ECS + 渲染跑通场景
+### Step 10 — 集成：ECS + 渲染
 
-**目标**: 将 ECS World 与渲染管线集成，在浏览器中跑通一个完整的小场景。
+**目标**: ECS World 驱动渲染管线，浏览器中跑通动画场景。
 
 **前置依赖**: Step 5, Step 8
 
 **交付物**:
-- `src/ecs/built-in-systems/transform-system.ts` — 计算世界矩阵
-- `src/ecs/built-in-systems/sprite-render-system.ts` — 收集可见精灵，提交给 Batcher
-- `src/ecs/built-in-components.ts` — 内置 Component 定义（Transform, Sprite, Camera）
-- `src/core/engine.ts` — Engine 主循环（requestAnimationFrame）
-- `test-visual/integration-test.html` — 集成测试页
+- `src/ecs/built-in-systems/` (transform-system, sprite-render-system)
+- `src/ecs/built-in-components.ts` (Transform, Sprite, Camera)
+- `src/core/engine.ts` — 主循环
+- 浏览器集成测试页
 
-**关键设计决策**:
-- Engine 主循环：`requestAnimationFrame` → 计算 dt → `world.update(dt)` → 渲染
-- TransformSystem (PreRender phase)：遍历有 Transform 的实体，计算 world matrix
-- SpriteRenderSystem (Render phase)：遍历有 Transform + Sprite 的实体，提交 draw 指令
-- Camera Component 控制投影矩阵
-
-**测试验证**:
+**测试**:
 ```
-浏览器打开 test-visual/integration-test.html，验证：
+浏览器打开 test-visual/integration-test.html:
 1. 屏幕上显示多个精灵
-2. 精灵在移动（有一个简单的 MovementSystem 修改 Transform）
-3. 帧率显示在左上角
-4. 控制台无错误
+2. 精灵在移动（MovementSystem 驱动）
+3. 帧率显示在左上角，稳定 60fps
+4. DrawCall 合批正常
 ```
-
-**完成标准**:
-- [x] ECS System 正确驱动渲染
-- [x] 精灵位移动画流畅运行
-- [x] 帧率稳定在 60fps（桌面浏览器）
-- [x] DrawCall 数量合理（相同纹理合批）
 
 ---
 
-## 步骤依赖关系
+### 步骤依赖关系
 
 ```
 Step 1 (脚手架)
@@ -406,10 +301,410 @@ Step 1 (脚手架)
   ├── Step 3 (EntityManager)          │
   │     └── Step 4 (ComponentStorage) │
   │           └── Step 5 (Scheduler)──┼── Step 10 (集成)
-  ├── Step 6 (Platform Adapter)       │
-  │     └── Step 7 (WebGL Device)     │
-  │           └── Step 8 (Batcher) ───┘
-  └── Step 9 (Bundle 格式)
+  ├── Step 6 (Platform Adapter)       │       │
+  │     └── Step 7 (WebGL Device)     │       │
+  │           └── Step 8 (Batcher) ───┘       │
+  └── Step 9 (Bundle 格式) ──────────────── Step 11 (Audio)
+                                              │
+                                        Step 12 (导出工具)
+                                              │
+                                        Step 13 (Benchmark)
 ```
 
-Step 2/3/6/9 可以并行开发，互不依赖。
+Step 2 / 3 / 6 / 9 可以并行开发，互不依赖。
+
+---
+
+## Part B：导出工具 + 性能验证
+
+### Step 11 — Audio Manager
+
+**目标**: 音频播放封装 — SFX 对象池 + BGM 单实例。
+
+**前置依赖**: Step 6 (Platform Adapter)
+
+**交付物**: `src/audio/audio-manager.ts` + 浏览器测试页
+
+**关键设计**:
+- SFX: 预分配通道（默认 8），超限时停止最早播放的
+- BGM: 单实例，支持淡入淡出
+- Browser: Web Audio API (AudioContext + GainNode)
+- 微信: `wx.createInnerAudioContext`
+- `masterVolume` / `muted` / `dispose()`
+
+**测试**:
+```
+浏览器打开 test-visual/audio-test.html:
+1. 点击按钮播放 SFX
+2. BGM 循环播放，淡入效果
+3. masterVolume 滑块实时调节
+```
+
+---
+
+### Step 12 — Cocos Creator 导出工具
+
+**目标**: 解析 Cocos Creator 项目，导出为 Membrane 格式。**这是 Phase 1 的商业杀手锏。**
+
+**前置依赖**: Step 10, Step 9
+
+**交付物**:
+- `tools/cocos-exporter/scene-parser.ts` — 解析 `.scene` / `.prefab` (JSON)
+- `tools/cocos-exporter/component-mapper.ts` — Cocos 组件 → Membrane ECS 映射
+- `tools/cocos-exporter/asset-converter.ts` — 资源转换 + Bundle 打包
+- `tools/cocos-exporter/cli.ts` — 命令行入口
+- 单元测试 + 集成测试
+
+**关键设计**:
+
+Cocos Creator `.scene` 文件是 JSON 格式，结构化程度高，解析工作量可控：
+
+```
+Cocos 节点树                        Membrane ECS
+──────────                        ────────────
+cc.Node                    →      Entity
+  ├── cc.UITransform       →      TransformComponent (坐标系翻转 Y)
+  ├── cc.Sprite            →      SpriteComponent (纹理引用 + UV)
+  ├── cc.Label             →      LabelComponent (文字渲染)
+  ├── cc.Animation         →      AnimationComponent
+  ├── cc.RigidBody2D       →      PhysicsComponent (后续支持)
+  └── 自定义脚本组件        →      EventTable / CustomSystem (渐进支持)
+```
+
+**难点与策略**:
+
+| 难点 | 策略 |
+|------|------|
+| 自定义脚本组件 | Phase 1 先跳过，标记为 unsupported；后续用 AI 辅助翻译 |
+| 动画时间轴 | 逐帧解析 Cocos 动画格式，映射为 Membrane AnimationClip |
+| 资源引用（uuid） | 建立 uuid → assetId 映射表 |
+| 坐标系差异 | Y 轴翻转 + anchor point 偏移 |
+
+**导出流程**:
+```
+cocos-project/
+  ├── assets/           ← 扫描所有 .scene / .prefab / 图片 / 音频
+  └── library/          ← Cocos 编译后的资源（可选）
+
+          │
+          ▼
+
+  membrane-export --input ./cocos-project --output ./membrane-build
+
+          │
+          ▼
+
+  membrane-build/
+  ├── scenes/
+  │   └── level_01.json       ← Membrane 场景数据（ECS 实体列表）
+  ├── bundles/
+  │   └── assets.wxpak        ← 二进制资源包
+  └── manifest.json           ← 场景 → Bundle 映射
+```
+
+**测试验证**:
+```bash
+# 单元测试: 解析器
+pnpm test -- tests/tools/cocos-exporter/
+
+# 集成测试: 导出真实 Cocos demo 项目
+pnpm run export:cocos -- --input ./test-fixtures/cocos-demo --output ./tmp/export
+# 验证输出文件结构
+# 在浏览器中加载导出场景，对比原版渲染结果
+```
+
+---
+
+### Step 13 — 性能 Benchmark
+
+**目标**: 建立自动化 benchmark 框架，**用数据证明 20% 性能提升**。
+
+**前置依赖**: Step 12
+
+**交付物**:
+- `tools/benchmark/` — 性能测试框架
+- `tools/benchmark/scenarios/` — 标准测试场景
+- `docs/benchmark-results.md` — 测试报告模板
+
+**测试场景**:
+
+| 场景 | 内容 | 核心指标 |
+|------|------|---------|
+| 精灵压力测试 | 1000 / 5000 / 10000 个移动精灵 | FPS, DrawCall 数 |
+| 实体创建销毁 | 每帧创建/销毁 100 个实体 | GC 暂停时间 |
+| 纹理切换 | 100 种不同纹理混合渲染 | DrawCall 数, FPS |
+| 资源加载 | 10MB Bundle 加载 | 加载时间, 内存占用 |
+| 真实场景 | Cocos demo 导出后运行 | 对比原版帧率 |
+
+**对比方式**:
+```
+同一台设备，同一个微信开发者工具版本:
+1. 原版 Cocos Creator 小游戏 → 记录 FPS / DrawCall / 内存
+2. Membrane 导出版 → 记录 FPS / DrawCall / 内存
+3. 生成对比报告
+```
+
+**完成标准**:
+- 精灵压力测试: 5000 精灵 ≥ 55fps (桌面) / ≥ 30fps (中端手机)
+- Cocos 导出对比: **帧率提升 ≥ 15%**
+- 零 GC 验证: 连续运行 60 秒，GC 暂停 < 2ms
+
+---
+
+### Step 14 — 微信小游戏适配 + 发布
+
+**目标**: WxAdapter 实现 + 真机测试 + 发布流程。
+
+**前置依赖**: Step 10, Step 6
+
+**交付物**:
+- `src/platform/wx-adapter.ts` — 完整实现
+- `wx-project/` — 微信小游戏项目模板
+- 真机测试报告
+
+**关键设计**:
+- `wx.createCanvas()` → WebGL Context
+- `wx.getFileSystemManager()` → 文件读写
+- `wx.createInnerAudioContext()` → 音频
+- 触摸事件: `wx.onTouchStart/Move/End`
+- 切后台: 自动暂停 BGM + 降帧率
+- 分包: 主包 ≤ 3MB，引擎核心 + Shader 放子包
+
+**测试**:
+```
+微信开发者工具:
+1. 打开 wx-project/
+2. 预览 → 手机扫码
+3. 验证: 渲染正确、触摸响应、音频播放、帧率达标
+```
+
+---
+
+## Phase 1 里程碑总结
+
+```
+M1: Runtime 核心跑通 (Step 1-10)
+    → 浏览器中 ECS + WebGL 渲染动画场景，60fps
+
+M2: 导出工具 + 性能验证 (Step 11-13)
+    → Cocos demo 导出后在 Membrane 上运行
+    → Benchmark 证明 ≥15% 性能提升
+
+M3: 微信发布 (Step 14)
+    → 真机跑通，发布到微信小游戏平台
+```
+
+---
+
+---
+
+# Phase 2 — AI-Native 创作平台
+
+> Phase 1 的运行时和数据格式是 Phase 2 的基础。Phase 2 不需要改运行时，只需要在上层建连接器。
+
+## 架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  创作平台（Notion-like 网页）                  │
+│                                                             │
+│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌─────────┐ │
+│  │ 场景编辑器 │  │ 素材管理器 │  │ 逻辑编辑器 │  │ 预览窗口 │ │
+│  │ (可视化)   │  │ (拖拽上传) │  │ (事件表)   │  │ (实时)   │ │
+│  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘  └────┬────┘ │
+│        └──────────────┼──────────────┘              │      │
+│                       ▼                              │      │
+│              MCP Protocol Layer                      │      │
+│  ┌─────────────────────────────────────────────┐    │      │
+│  │  Perplexity  │  GPT Image  │  Claude  │ ... │    │      │
+│  │  策划案       │  2D 素材     │  代码     │     │    │      │
+│  └─────────────────────────────────────────────┘    │      │
+│                       │                              │      │
+│                       ▼                              │      │
+│            Membrane 场景数据 (JSON + Bundle)          │      │
+│                       │                              │      │
+└───────────────────────┼──────────────────────────────┘      │
+                        │                                      │
+                        ▼                                      │
+              Membrane Runtime ◄───────────────────────────────┘
+                        │
+                        ▼
+                 微信小游戏发布
+```
+
+## 步骤
+
+### Step 15 — MCP 协议层
+
+**目标**: 定义 Membrane 的 MCP (Model Context Protocol) 接口，让外部 AI 工具能读写游戏数据。
+
+**交付物**:
+- MCP Server 定义
+- 暴露的 Resource / Tool 列表
+- 接口文档
+
+**MCP 暴露的能力**:
+```
+Resources (读):
+  - membrane://scenes/{id}         → 场景数据
+  - membrane://assets/{id}         → 素材元信息
+  - membrane://events/{scene_id}   → 事件表
+  - membrane://project/manifest    → 项目结构
+
+Tools (写):
+  - create_entity(scene, components)  → 创建实体
+  - update_entity(id, components)     → 修改实体
+  - delete_entity(id)                 → 删除实体
+  - import_asset(type, data)          → 导入素材
+  - add_event(scene, trigger, action) → 添加事件规则
+  - preview(scene)                    → 触发实时预览
+```
+
+---
+
+### Step 16 — AI 连接器
+
+**目标**: 对接外部 AI 服务。
+
+**连接器列表**:
+
+| 连接器 | 对接服务 | 用途 |
+|--------|---------|------|
+| Perplexity | Perplexity API / MCP | 搜索参考、生成策划案、世界观 |
+| GPT Image | OpenAI gptimage2 | 生成 2D 精灵、UI 元素、背景 |
+| Claude | Anthropic API / MCP | 生成游戏逻辑代码、事件表、System 脚本 |
+| 音效 AI | Suno / Stable Audio | 生成背景音乐、音效 |
+| 本地化 | Claude / GPT | 多语言翻译 |
+
+**工作流示例**:
+```
+用户: "做一个跑酷游戏，障碍物越来越快"
+
+→ Perplexity: 搜索跑酷游戏设计最佳实践，生成 GDD 文档
+→ GPT Image: 生成角色精灵、障碍物、背景素材
+→ Claude: 生成 RunSystem (角色跑动)、ObstacleSpawner (障碍物生成)、
+          DifficultySystem (难度递增逻辑)
+→ 组装: 创建场景实体 + 事件表
+→ Membrane Runtime: 实时预览
+→ 用户满意 → 导出微信小游戏
+```
+
+---
+
+### Step 17 — Notion-like 创作界面
+
+**目标**: 网页版内容管理工具。
+
+**核心功能**:
+- 场景编辑器: 拖拽放置精灵、调整 Transform
+- 素材管理器: 上传 / AI 生成 / 组织素材
+- 事件表编辑器: 可视化 trigger → action 规则
+- 实时预览: 右侧 iframe 嵌入 Membrane Runtime
+- 版本管理: 场景数据 Git 化
+
+**设计原则**:
+- 对人: 漂亮的可视化界面，像 Notion 一样好用
+- 对 AI: 底层全是结构化 JSON，MCP 直接读写
+- 不做重 IDE: 不做 Unity 那样的 Inspector / Hierarchy / Console，保持极简
+
+---
+
+## Phase 2 里程碑
+
+```
+M4: MCP 协议层 (Step 15)
+    → AI 能通过 MCP 读写 Membrane 场景数据
+
+M5: AI 连接器 (Step 16)
+    → "做一个跑酷游戏" → AI 端到端生成 → Membrane 运行
+
+M6: 创作界面 (Step 17)
+    → 网页版 Notion-like 编辑器 + AI 辅助创作
+```
+
+---
+
+# 全局时间线
+
+```
+            Phase 1: 寄生                    Phase 2: 替代
+    ┌──────────────────────────┐    ┌────────────────────────────┐
+    │                          │    │                            │
+    │  M1: Runtime 核心        │    │  M4: MCP 协议层            │
+    │  (Step 1-10)             │    │  (Step 15)                 │
+    │  ~6-8 周                 │    │  ~2 周                     │
+    │          │               │    │          │                 │
+    │          ▼               │    │          ▼                 │
+    │  M2: 导出工具 + Benchmark│    │  M5: AI 连接器             │
+    │  (Step 11-13)            │    │  (Step 16)                 │
+    │  ~4-6 周                 │    │  ~4 周                     │
+    │          │               │    │          │                 │
+    │          ▼               │    │          ▼                 │
+    │  M3: 微信发布            │    │  M6: Notion-like 界面      │
+    │  (Step 14)               │    │  (Step 17)                 │
+    │  ~2 周                   │    │  ~6-8 周                   │
+    │                          │    │                            │
+    └──────────────────────────┘    └────────────────────────────┘
+            ~12-16 周                       ~12-14 周
+```
+
+**Phase 1 总耗时**: 约 3-4 个月（Runtime + 导出工具 + 微信发布）
+**Phase 2 总耗时**: 约 3 个月（MCP + AI 连接器 + 创作界面）
+
+---
+
+# 附录：性能优势技术细节
+
+## 为什么能比 Cocos / Unity 适配层快 20%
+
+### 1. 零 DOM 依赖
+
+Cocos Creator 小游戏适配层仍有 DOM 模拟代码残留（事件系统、DOM-like 节点树）。Membrane 完全绕过，直接 `wx.createCanvas()` → WebGL。
+
+### 2. SoA ECS vs OOP 节点树
+
+```
+Cocos (OOP):
+for each node in sceneGraph:
+  node.transform.update()     ← Cache miss（跳转到 transform 对象地址）
+  node.sprite.render()        ← Cache miss（跳转到 sprite 对象地址）
+
+Membrane (SoA ECS):
+for i in 0..entityCount:
+  posX[i] += velX[i] * dt     ← Cache hit（连续内存顺序访问）
+  posY[i] += velY[i] * dt     ← Cache hit
+```
+
+### 3. 零 GC 数学库
+
+```
+Cocos:
+let result = vec1.add(vec2)    ← 每次运算分配新 Vec3 对象 → GC 压力
+
+Membrane:
+Vec3.add(out, vec1, vec2)      ← 写入预分配的 out → 零 GC
+```
+
+### 4. 精细 GL 状态缓存
+
+```
+Membrane GLStateCache:
+setState(blend: true)
+setState(blend: true)   ← 跳过，不调 gl.enable(BLEND)
+setState(blend: false)  ← 调用 gl.disable(BLEND)
+```
+
+### 5. SpriteBatcher 激进合批
+
+```
+同纹理精灵: 合并为 1 个 DrawCall
+纹理图集: 所有使用同一图集的精灵 → 1 个 DrawCall
+Cocos 合批更保守，需要节点在同一层级
+```
+
+### 6. 自定义 Bundle 零拷贝
+
+```
+Cocos: 加载 JSON meta → 解析 → 拷贝到内存 → 创建对象
+Membrane: mmap-style Uint8Array 视图 → 零拷贝直接使用
+```
