@@ -7,3 +7,4 @@ export * from './renderer';
 export * from './asset';
 export * from './input';
 export * from './core';
+export * from './canonical';

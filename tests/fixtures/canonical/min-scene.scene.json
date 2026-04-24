@@ -1,0 +1,87 @@
+{
+  "format": "membrane.scene",
+  "version": 1,
+  "sceneId": "level_01",
+  "name": "Level 01",
+  "metadata": {
+    "source": "cocos",
+    "sourceFile": "assets/scenes/level_01.scene"
+  },
+  "entities": [
+    {
+      "id": "main_camera",
+      "name": "Main Camera",
+      "parent": null,
+      "enabled": true,
+      "components": {
+        "Transform": {
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Camera": {
+          "mode": "orthographic",
+          "size": 640,
+          "clearColor": "#1A1A2EFF"
+        }
+      }
+    },
+    {
+      "id": "player",
+      "name": "Player",
+      "parent": null,
+      "enabled": true,
+      "components": {
+        "Transform": {
+          "x": 100,
+          "y": 200,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Sprite": {
+          "atlas": "main",
+          "frame": "player_idle",
+          "order": 10
+        },
+        "Tags": {
+          "values": ["player", "controllable"]
+        }
+      }
+    },
+    {
+      "id": "enemy_01",
+      "name": "Slime",
+      "parent": null,
+      "enabled": true,
+      "components": {
+        "Transform": {
+          "x": 400,
+          "y": 200,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Sprite": {
+          "atlas": "main",
+          "frame": "slime_idle",
+          "order": 5,
+          "color": "#FF0000FF",
+          "flipX": true
+        },
+        "Tags": {
+          "values": ["enemy"]
+        }
+      }
+    }
+  ],
+  "events": [
+    {
+      "id": "pickup_coin",
+      "on": "tag:player touch tag:collectible",
+      "do": ["destroy:target", "score:+1"]
+    }
+  ]
+}

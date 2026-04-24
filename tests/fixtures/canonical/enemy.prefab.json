@@ -1,0 +1,45 @@
+{
+  "format": "membrane.prefab",
+  "version": 1,
+  "prefabId": "enemy/slime",
+  "name": "Slime",
+  "entities": [
+    {
+      "id": "root",
+      "name": "Slime Root",
+      "parent": null,
+      "components": {
+        "Transform": {
+          "x": 0,
+          "y": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Sprite": {
+          "atlas": "enemies",
+          "frame": "slime_idle",
+          "order": 5
+        },
+        "Tags": {
+          "values": ["enemy", "slime"]
+        }
+      }
+    },
+    {
+      "id": "shadow",
+      "name": "Shadow",
+      "parent": "root",
+      "components": {
+        "Transform": {
+          "x": 0,
+          "y": -8
+        },
+        "Sprite": {
+          "atlas": "enemies",
+          "frame": "shadow_small",
+          "order": 4
+        }
+      }
+    }
+  ]
+}

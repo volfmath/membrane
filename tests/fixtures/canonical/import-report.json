@@ -1,0 +1,39 @@
+{
+  "format": "membrane.import-report",
+  "version": 1,
+  "source": {
+    "kind": "cocos",
+    "root": "./cocos-project"
+  },
+  "summary": {
+    "sceneCount": 1,
+    "entityCount": 3,
+    "warningCount": 1,
+    "unsupportedCount": 2
+  },
+  "issues": [
+    {
+      "severity": "warning",
+      "code": "UNSUPPORTED_COMPONENT",
+      "sceneId": "level_01",
+      "entityId": "Canvas/ScoreLabel",
+      "component": "cc.Label",
+      "message": "Phase 1 importer does not support cc.Label; entity kept without label rendering."
+    },
+    {
+      "severity": "info",
+      "code": "UNSUPPORTED_COMPONENT",
+      "sceneId": "level_01",
+      "entityId": "Canvas/Bg",
+      "component": "cc.Widget",
+      "message": "cc.Widget layout constraints are not imported; entity uses static Transform."
+    },
+    {
+      "severity": "error",
+      "code": "MISSING_ASSET",
+      "sceneId": "level_01",
+      "entityId": "player",
+      "message": "Referenced texture atlas 'ui_atlas' not found in project assets."
+    }
+  ]
+}

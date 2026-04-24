@@ -74,7 +74,7 @@ Membrane Runtime                    Membrane Runtime
 
 ## 实现进度
 
-**Phase 1 · Steps 1–11 已完成** — 184 tests 全通过，真机 smoke 验证通过
+**Phase 1 · Steps 1–12D 已完成** — 258 tests 全通过，真机 smoke 验证通过，真实 Cocos 项目导入验证通过
 
 | Step | 模块 | 关键文件 | 测试 |
 |------|------|----------|------|
@@ -86,6 +86,8 @@ Membrane Runtime                    Membrane Runtime
 | 9 | 资源格式 | `src/asset/` — BundleWriter, BundleReader (WXGE binary) | 14 |
 | 10 | Engine + Plugin | `src/core/engine.ts` — 主循环, MembranePlugin (Bevy 风格) | 17 |
 | 11 | 输入系统 | `src/input/input-manager.ts` — 多点触控, 手势检测, 零 GC | 28 |
+| 12A | Canonical Format | `src/canonical/` — 类型 + 校验器 + fixture | 40 |
+| 12B–D | Cocos 导入器 | `tools/cocos-importer/` — 解析 + 映射 + 报告 | 34 |
 
 ### 真机 Smoke 验证
 
@@ -101,9 +103,19 @@ Membrane Runtime                    Membrane Runtime
 - 跨 canvas `drawImage` 合成（WebGL→2D）真机不工作
 - 构建目标必须 `--target=es6`，ES2020 语法真机不支持
 
+### Cocos 导入验证 (mahjong game)
+
+| 指标 | 数值 |
+|------|------|
+| 场景数 | 3 (Loading, Home, MainGame) |
+| 实体数 | 199 |
+| 组件类型 | 19 种 (支持 3 / 不支持 16) |
+| 校验 | 全部通过 canonical format validation |
+
 ### 下一步
 
-- Step 12: Cocos Creator 单向导入链路
+- Step 12F-G: validate / compile CLI 命令
+- Step 12H: Runtime smoke load — 编译场景在浏览器/微信加载
 - `wx-smoke-webgl`: 主 canvas 直接 WebGL 渲染验证
 - Step 13: 微信发布流程
 
@@ -111,7 +123,7 @@ Membrane Runtime                    Membrane Runtime
 
 ```bash
 pnpm install          # 安装依赖
-pnpm test             # 运行 184 个单元测试
+pnpm test             # 运行 258 个单元测试
 pnpm typecheck        # TypeScript 严格模式检查
 pnpm build            # 构建运行时库
 pnpm build:wx-smoke   # 构建 bootstrap smoke → wx-project/dist/index.js

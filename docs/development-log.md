@@ -67,8 +67,28 @@
 | 跨 canvas drawImage 真机失败 | WebGL 渲染到二级 canvas + drawImage 合成，真机黑屏 | 强制 Canvas2D；WebGL 需直接用主 canvas |
 | ES2020 语法不兼容 | `?.` / `??` 运行报错 | esbuild `--target=es6` |
 
+### 已完成 — Cocos 导入链路 (Step 12A–D)
+
+- **Canonical Format 类型系统** (Step 12A): 完整 TypeScript 接口定义 (Scene/Prefab/Assets/ImportReport)、4 种格式的 JSON 校验器、4 个最小测试 fixture (40 tests)
+- **Cocos Scene 解析器** (Step 12B): 解析 Cocos Creator 3.x `.scene` 文件 (JSON 扁平数组)、节点树重建、组件引用解析、quaternion→degrees 旋转转换 (16 tests)
+- **Component Mapper** (Step 12C): Cocos 节点→Canonical Entity 映射，支持 Transform/Sprite/Camera、unsupported component 报告、重复 ID 自动消歧 (13 tests)
+- **完整导入管线** (Step 12D): `importCocosProject()` 函数，扫描项目目录、解析所有 scene、生成 canonical 输出 + assets 清单 + import report
+- **真实项目集成验证** (Step 12E): 用 mahjong 游戏项目 (D:\majonggame) 验证，3 个 scene / 199 entities / 146 unsupported components 全部正确导入、校验通过 (5 tests)
+
+**新增测试: 74 tests → 总计 258 tests 全通过**
+
+### Cocos 导入发现
+
+| 发现 | 详情 |
+|------|------|
+| 自定义脚本组件 | `__type__` 为 hash (如 `63e65ZpqC5D2ZzaRpENZpag`)，非 `cc.*` 前缀 |
+| 重复节点名 | 同名兄弟节点 (如多个 `TileIn`) 需要自动消歧后缀 |
+| 真实项目规模 | mahjong: 3 scenes, 199 entities, 19 种不同组件类型 |
+| 支持率 | Transform/Sprite/Camera 正确映射; cc.Label/Widget/Button/Animation 等 Phase 1 不支持 |
+
 ### 下一步
 
-1. Step 12: Cocos Creator 单向导入链路
-2. `wx-smoke-webgl`: 主 canvas 直接 WebGL 渲染验证
-3. Step 13: 微信发布流程
+1. Step 12F-G: validate / compile CLI 命令
+2. Step 12H: Runtime smoke load — 编译场景在浏览器/微信加载
+3. `wx-smoke-webgl`: 主 canvas 直接 WebGL 渲染验证
+4. Step 13: 微信发布流程

@@ -1,0 +1,36 @@
+{
+  "format": "membrane.assets",
+  "version": 1,
+  "scenes": [
+    { "id": "level_01", "path": "scenes/level_01.scene.json" }
+  ],
+  "prefabs": [
+    { "id": "enemy/slime", "path": "prefabs/enemy_slime.prefab.json" }
+  ],
+  "atlases": [
+    {
+      "id": "main",
+      "image": "textures/main.png",
+      "width": 1024,
+      "height": 1024,
+      "frames": [
+        { "id": "player_idle", "x": 0, "y": 0, "width": 64, "height": 64, "pivotX": 0.5, "pivotY": 0.5 },
+        { "id": "slime_idle", "x": 64, "y": 0, "width": 32, "height": 32, "pivotX": 0.5, "pivotY": 1.0 }
+      ]
+    },
+    {
+      "id": "enemies",
+      "image": "textures/enemies.png",
+      "width": 512,
+      "height": 512,
+      "frames": [
+        { "id": "slime_idle", "x": 0, "y": 0, "width": 32, "height": 32 },
+        { "id": "shadow_small", "x": 32, "y": 0, "width": 32, "height": 16 }
+      ]
+    }
+  ],
+  "audio": [
+    { "id": "bgm.main", "path": "audio/bgm_main.mp3", "kind": "bgm" },
+    { "id": "sfx.jump", "path": "audio/sfx_jump.wav", "kind": "sfx" }
+  ]
+}
