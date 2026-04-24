@@ -98,6 +98,7 @@ Membrane Runtime                    Membrane Runtime
 |------|------|------|
 | `wx-smoke-bootstrap` | ✅ 通过 | 2026-04-24 |
 | `wx-smoke-runtime` | ✅ 通过 (Canvas2D, 16 sprites, touch spawn, FPS) | 2026-04-24 |
+| `wx-smoke-webgl` | 🔜 待验证 (WebGL on primary canvas, 24 sprites) | — |
 
 ### 微信平台经验
 
@@ -118,8 +119,8 @@ Membrane Runtime                    Membrane Runtime
 
 ### 下一步
 
-- `wx-smoke-webgl`: 主 canvas 直接 WebGL 渲染验证
-- Step 13: 微信发布流程
+- Step 13: 运行时验证 + Benchmark
+- Step 14: 微信发布流程
 
 ## 命令
 
@@ -130,6 +131,7 @@ pnpm typecheck        # TypeScript 严格模式检查
 pnpm build            # 构建运行时库
 pnpm build:wx-smoke   # 构建 bootstrap smoke → wx-project/dist/index.js
 pnpm build:wx-runtime # 构建 runtime smoke → wx-project/dist/index.js
+pnpm build:wx-webgl   # 构建 WebGL smoke → wx-project/dist/index.js
 ```
 
 ## License

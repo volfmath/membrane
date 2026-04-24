@@ -102,7 +102,16 @@
 
 **Step 12H 新增测试: 11 tests → 总计 287 tests 全通过**
 
+### 已完成 — wx-smoke-webgl
+
+- **wx-smoke-webgl**: WebGL 渲染直接使用主 canvas (不需要跨 canvas 合成)
+  - 24 个彩色弹跳方块 + 触摸生成新方块
+  - WebGL 上下文信息日志 (vendor/renderer/version/extensions)
+  - FPS 条指示器 (绿=60fps, 黄=30fps, 红<20fps)
+  - `pnpm build:wx-webgl` 构建 → `wx-project/dist/index.js`
+  - 验证要点: 主 canvas WebGL 在真机是否工作 (之前跨 canvas 方案失败)
+
 ### 下一步
 
-1. `wx-smoke-webgl`: 主 canvas 直接 WebGL 渲染验证
-2. Step 13: 微信发布流程
+1. Step 13: 运行时验证 + Benchmark
+2. Step 14: 微信发布流程

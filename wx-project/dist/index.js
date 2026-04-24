@@ -1,8 +1,8 @@
 "use strict";
 
-// src/wx-smoke-runtime.cts
-(function smokeRuntime() {
-  var TAG = "[Membrane][wx-smoke-runtime]";
+// src/wx-smoke-webgl.cts
+(function smokeWebGL() {
+  var TAG = "[Membrane][wx-smoke-webgl]";
   function log(...args) {
     args.unshift(TAG);
     console.info.apply(console, args);
@@ -12,15 +12,15 @@
     console.warn.apply(console, args);
   }
   var state = {
-    caseId: "wx-smoke-runtime",
+    caseId: "wx-smoke-webgl",
     startedAt: Date.now(),
     frameCount: 0,
     hasWx: typeof wx !== "undefined",
     summary: "booting",
-    glMode: false,
     status: {
       canvas: "pending",
       gl: "pending",
+      shader: "pending",
       loop: "pending",
       touch: "pending"
     }
@@ -38,13 +38,10 @@
     }
   }
   var canvas = null;
-  var ctx = null;
+  var gl = null;
   var canvasWidth = 360;
   var canvasHeight = 640;
   var dpr = 1;
-  var glCanvas = null;
-  var gl = null;
-  var useWebGL = false;
   function setupCanvas() {
     if (!state.hasWx || typeof wx.createCanvas !== "function") {
       warn("wx.createCanvas unavailable");
@@ -64,12 +61,6 @@
         dpr = sysInfo.pixelRatio || 1;
         state.deviceLabel = [sysInfo.brand, sysInfo.model].filter(Boolean).join(" ");
       }
-      ctx = canvas.getContext("2d");
-      if (!ctx) {
-        state.status.canvas = "no-2d";
-        warn("2d context unavailable on primary canvas");
-        return false;
-      }
       state.status.canvas = "ready";
       log("canvas ready", canvasWidth + "x" + canvasHeight, "dpr=" + dpr);
       return true;
@@ -88,8 +79,9 @@
   var aPosition = -1;
   var aTexCoord = -1;
   var aColor = -1;
-  var glVertexData;
-  var glColorView;
+  var MAX_SPRITES = 256;
+  var glVertexData = new Float32Array(MAX_SPRITES * 4 * 5);
+  var glColorView = new Uint32Array(glVertexData.buffer);
   var VERT_SRC = [
     "attribute vec2 aPosition;",
     "attribute vec2 aTexCoord;",
@@ -112,66 +104,80 @@
     "  gl_FragColor = texture2D(uTexture, vTexCoord) * vColor;",
     "}"
   ].join("\n");
-  function trySetupWebGL() {
-    if (typeof wx.createCanvas !== "function") return false;
+  function setupWebGL() {
+    if (!canvas) return false;
     try {
-      glCanvas = wx.createCanvas();
-      if (!glCanvas) return false;
-      glCanvas.width = canvasWidth;
-      glCanvas.height = canvasHeight;
-      gl = glCanvas.getContext("webgl", {
-        alpha: true,
+      gl = canvas.getContext("webgl", {
+        alpha: false,
         antialias: false,
         stencil: false,
-        depth: false,
-        preserveDrawingBuffer: true
+        depth: false
       });
       if (!gl) {
         state.status.gl = "no-webgl";
-        log("WebGL not available, using Canvas 2D fallback");
+        warn("WebGL not available on primary canvas");
         return false;
       }
+      state.status.gl = "context-ok";
+      var renderer = gl.getParameter(gl.RENDERER);
+      var vendor = gl.getParameter(gl.VENDOR);
+      var version = gl.getParameter(gl.VERSION);
+      log("WebGL context:", vendor, renderer, version);
+      var maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+      var maxUnits = gl.getParameter(gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS);
+      log("limits: maxTexSize=" + maxTex, "maxTexUnits=" + maxUnits);
+      var exts = gl.getSupportedExtensions() || [];
+      log("extensions (" + exts.length + "):", exts.join(", "));
       var vs = gl.createShader(gl.VERTEX_SHADER);
-      if (!vs) return false;
+      if (!vs) {
+        state.status.shader = "no-vs";
+        return false;
+      }
       gl.shaderSource(vs, VERT_SRC);
       gl.compileShader(vs);
       if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
-        warn("vertex shader", gl.getShaderInfoLog(vs));
-        state.status.gl = "shader-fail";
+        warn("vertex shader fail:", gl.getShaderInfoLog(vs));
+        state.status.shader = "vs-fail";
         return false;
       }
       var fs = gl.createShader(gl.FRAGMENT_SHADER);
-      if (!fs) return false;
+      if (!fs) {
+        state.status.shader = "no-fs";
+        return false;
+      }
       gl.shaderSource(fs, FRAG_SRC);
       gl.compileShader(fs);
       if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
-        warn("fragment shader", gl.getShaderInfoLog(fs));
-        state.status.gl = "shader-fail";
+        warn("fragment shader fail:", gl.getShaderInfoLog(fs));
+        state.status.shader = "fs-fail";
         return false;
       }
       program = gl.createProgram();
-      if (!program) return false;
+      if (!program) {
+        state.status.shader = "no-program";
+        return false;
+      }
       gl.attachShader(program, vs);
       gl.attachShader(program, fs);
       gl.linkProgram(program);
       if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        warn("program link", gl.getProgramInfoLog(program));
-        state.status.gl = "link-fail";
+        warn("program link fail:", gl.getProgramInfoLog(program));
+        state.status.shader = "link-fail";
         return false;
       }
+      gl.deleteShader(vs);
+      gl.deleteShader(fs);
       aPosition = gl.getAttribLocation(program, "aPosition");
       aTexCoord = gl.getAttribLocation(program, "aTexCoord");
       aColor = gl.getAttribLocation(program, "aColor");
       uProjection = gl.getUniformLocation(program, "uProjection");
       uTextureLoc = gl.getUniformLocation(program, "uTexture");
-      var MAX_GL_SPRITES = 64;
-      glVertexData = new Float32Array(MAX_GL_SPRITES * 4 * 5);
-      glColorView = new Uint32Array(glVertexData.buffer);
+      state.status.shader = "ready";
       vertexBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, glVertexData.byteLength, gl.DYNAMIC_DRAW);
-      var indices = new Uint16Array(MAX_GL_SPRITES * 6);
-      for (var i = 0; i < MAX_GL_SPRITES; i++) {
+      var indices = new Uint16Array(MAX_SPRITES * 6);
+      for (var i = 0; i < MAX_SPRITES; i++) {
         var vi = i * 4, ii = i * 6;
         indices[ii] = vi;
         indices[ii + 1] = vi + 1;
@@ -198,44 +204,50 @@
       );
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      var renderer = gl.getParameter(gl.RENDERER);
-      var vendor = gl.getParameter(gl.VENDOR);
-      state.status.gl = "ready";
-      log("WebGL ready:", vendor, renderer);
+      log("WebGL setup complete");
       return true;
     } catch (e) {
-      warn("WebGL setup failed", e && e.message ? e.message : e);
+      warn("WebGL setup failed:", e && e.message ? e.message : e);
       state.status.gl = "failed";
       return false;
     }
   }
-  var SPRITE_COUNT = 16;
   var sprites = [];
+  var INIT_SPRITES = 24;
   var COLOR_TABLE = [
-    { r: 68, g: 136, b: 255 },
-    // blue
-    { r: 68, g: 255, b: 136 },
+    4282681599,
+    // blue   (ABGR)
+    4287168324,
     // green
-    { r: 255, g: 136, b: 68 },
-    // orange
-    { r: 255, g: 68, b: 170 },
+    4282681599,
+    // orange — recalc below
+    4289348863,
     // pink
-    { r: 255, g: 255, b: 68 },
+    4282712063,
     // yellow
-    { r: 68, g: 255, b: 255 },
+    4294967108,
     // cyan
-    { r: 170, g: 68, b: 255 },
+    4294919338,
     // purple
-    { r: 255, g: 68, b: 68 }
+    4282664191
     // red
   ];
-  function packColor(r, g, b, a) {
+  function packABGR(r, g, b, a) {
     return (a << 24 | b << 16 | g << 8 | r) >>> 0;
   }
+  COLOR_TABLE = [
+    packABGR(68, 136, 255, 255),
+    packABGR(68, 255, 136, 255),
+    packABGR(255, 136, 68, 255),
+    packABGR(255, 68, 170, 255),
+    packABGR(255, 255, 68, 255),
+    packABGR(68, 255, 255, 255),
+    packABGR(170, 68, 255, 255),
+    packABGR(255, 68, 68, 255)
+  ];
   function initSprites() {
-    for (var i = 0; i < SPRITE_COUNT; i++) {
+    for (var i = 0; i < INIT_SPRITES; i++) {
       var size = 20 + Math.random() * 40;
-      var c = COLOR_TABLE[i % COLOR_TABLE.length];
       sprites.push({
         x: Math.random() * (canvasWidth - size),
         y: Math.random() * (canvasHeight - size),
@@ -243,10 +255,7 @@
         h: size,
         vx: (60 + Math.random() * 120) * (Math.random() > 0.5 ? 1 : -1),
         vy: (60 + Math.random() * 120) * (Math.random() > 0.5 ? 1 : -1),
-        r: c.r,
-        g: c.g,
-        b: c.b,
-        colorU32: packColor(c.r, c.g, c.b, 255)
+        colorU32: COLOR_TABLE[i % COLOR_TABLE.length]
       });
     }
   }
@@ -285,7 +294,6 @@
         state.status.touch = "active";
         for (var i = 0; i < 4; i++) {
           var size = 15 + Math.random() * 20;
-          var c = COLOR_TABLE[Math.floor(Math.random() * COLOR_TABLE.length)];
           sprites.push({
             x: tx - size / 2,
             y: ty - size / 2,
@@ -293,30 +301,17 @@
             h: size,
             vx: (80 + Math.random() * 160) * (Math.random() > 0.5 ? 1 : -1),
             vy: (80 + Math.random() * 160) * (Math.random() > 0.5 ? 1 : -1),
-            r: c.r,
-            g: c.g,
-            b: c.b,
-            colorU32: packColor(c.r, c.g, c.b, 255)
+            colorU32: COLOR_TABLE[Math.floor(Math.random() * COLOR_TABLE.length)]
           });
         }
-        while (sprites.length > 128) sprites.shift();
-        log("touch spawn, total sprites:", sprites.length);
+        while (sprites.length > MAX_SPRITES) sprites.shift();
+        log("touch spawn, total:", sprites.length);
       });
     }
     if (typeof wx.onTouchEnd === "function") {
       wx.onTouchEnd(function onTE() {
         state.status.touch = "ended";
       });
-    }
-  }
-  function renderCanvas2D() {
-    if (!ctx) return;
-    ctx.fillStyle = "#141a22";
-    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-    for (var i = 0; i < sprites.length; i++) {
-      var s = sprites[i];
-      ctx.fillStyle = "rgb(" + s.r + "," + s.g + "," + s.b + ")";
-      ctx.fillRect(Math.round(s.x), Math.round(s.y), Math.round(s.w), Math.round(s.h));
     }
   }
   var projMatrix = new Float32Array(16);
@@ -329,7 +324,8 @@
     projMatrix[13] = -(top + bottom) / (top - bottom);
     projMatrix[15] = 1;
   }
-  function renderWebGL() {
+  var drawCallCount = 0;
+  function render() {
     if (!gl || !program) return;
     gl.viewport(0, 0, canvasWidth, canvasHeight);
     gl.clearColor(0.08, 0.1, 0.14, 1);
@@ -342,7 +338,8 @@
     gl.bindTexture(gl.TEXTURE_2D, whiteTexture);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    var batchSize = 64;
+    drawCallCount = 0;
+    var batchSize = MAX_SPRITES;
     for (var start = 0; start < sprites.length; start += batchSize) {
       var end = Math.min(start + batchSize, sprites.length);
       var count = end - start;
@@ -382,36 +379,73 @@
       gl.enableVertexAttribArray(aColor);
       gl.vertexAttribPointer(aColor, 4, gl.UNSIGNED_BYTE, true, stride, 16);
       gl.drawElements(gl.TRIANGLES, count * 6, gl.UNSIGNED_SHORT, 0);
+      drawCallCount++;
     }
-    if (ctx && glCanvas) {
-      ctx.drawImage(glCanvas, 0, 0);
-    }
+    renderHud();
   }
   var fpsAccum = 0;
   var fpsFrames = 0;
   var displayFps = 0;
-  function drawHud() {
-    if (!ctx) return;
-    var panelH = 80;
-    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-    ctx.fillRect(0, 0, canvasWidth, panelH);
-    ctx.fillStyle = "#f4f7fb";
-    ctx.font = "bold 18px monospace";
-    ctx.fillText("Membrane runtime smoke", 12, 22);
-    ctx.font = "13px monospace";
-    var modeStr = useWebGL ? "WebGL" : "Canvas2D";
-    ctx.fillStyle = useWebGL ? "#6ee7a8" : "#ffd166";
-    ctx.fillText("mode: " + modeStr, 12, 40);
-    var fpsColor = displayFps >= 55 ? "#6ee7a8" : displayFps >= 30 ? "#ffd166" : "#ff7b7b";
-    ctx.fillStyle = fpsColor;
-    ctx.fillText("FPS: " + displayFps.toFixed(1), 160, 40);
-    ctx.fillStyle = "#9fb3c8";
-    ctx.fillText("sprites: " + sprites.length + "  frame: " + state.frameCount, 12, 58);
-    if (state.deviceLabel) {
-      ctx.fillText(state.deviceLabel, 12, 74);
-    }
-    ctx.fillStyle = "#666";
-    ctx.fillText("tap to spawn", canvasWidth - 120, 74);
+  function renderHud() {
+    if (!gl) return;
+    var barH = 6;
+    var fpsRatio = Math.min(displayFps / 60, 1);
+    var barW = canvasWidth * fpsRatio;
+    var hudData = new Float32Array(2 * 4 * 5);
+    var hudColor = new Uint32Array(hudData.buffer);
+    var bgColor = packABGR(20, 20, 30, 200);
+    var fpsColor = fpsRatio > 0.9 ? packABGR(110, 231, 168, 255) : fpsRatio > 0.5 ? packABGR(255, 209, 102, 255) : packABGR(255, 123, 123, 255);
+    hudData[0] = 0;
+    hudData[1] = 0;
+    hudData[2] = 0;
+    hudData[3] = 0;
+    hudColor[4] = bgColor;
+    hudData[5] = canvasWidth;
+    hudData[6] = 0;
+    hudData[7] = 1;
+    hudData[8] = 0;
+    hudColor[9] = bgColor;
+    hudData[10] = canvasWidth;
+    hudData[11] = barH;
+    hudData[12] = 1;
+    hudData[13] = 1;
+    hudColor[14] = bgColor;
+    hudData[15] = 0;
+    hudData[16] = barH;
+    hudData[17] = 0;
+    hudData[18] = 1;
+    hudColor[19] = bgColor;
+    hudData[20] = 0;
+    hudData[21] = 0;
+    hudData[22] = 0;
+    hudData[23] = 0;
+    hudColor[24] = fpsColor;
+    hudData[25] = barW;
+    hudData[26] = 0;
+    hudData[27] = 1;
+    hudData[28] = 0;
+    hudColor[29] = fpsColor;
+    hudData[30] = barW;
+    hudData[31] = barH;
+    hudData[32] = 1;
+    hudData[33] = 1;
+    hudColor[34] = fpsColor;
+    hudData[35] = 0;
+    hudData[36] = barH;
+    hudData[37] = 0;
+    hudData[38] = 1;
+    hudColor[39] = fpsColor;
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, hudData);
+    var stride = 20;
+    gl.enableVertexAttribArray(aPosition);
+    gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(aTexCoord);
+    gl.vertexAttribPointer(aTexCoord, 2, gl.FLOAT, false, stride, 8);
+    gl.enableVertexAttribArray(aColor);
+    gl.vertexAttribPointer(aColor, 4, gl.UNSIGNED_BYTE, true, stride, 16);
+    gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
+    drawCallCount++;
   }
   var rafSource = "none";
   function requestFrame(cb) {
@@ -439,7 +473,7 @@
       }, 16);
       if (rafSource === "none") {
         rafSource = "setTimeout";
-        log("raf source: setTimeout fallback (16ms)");
+        log("raf source: setTimeout fallback");
       }
     }
   }
@@ -451,11 +485,7 @@
     if (dt < 0) dt = 0;
     lastTime = timestamp;
     updateSprites(dt);
-    if (useWebGL) {
-      renderWebGL();
-    } else {
-      renderCanvas2D();
-    }
+    render();
     state.frameCount++;
     fpsAccum += dt;
     fpsFrames++;
@@ -464,45 +494,47 @@
       fpsAccum = 0;
       fpsFrames = 0;
     }
-    drawHud();
     if (state.status.loop !== "running") {
       state.status.loop = "running";
     }
     if (state.frameCount === 1 || state.frameCount % 120 === 0) {
-      log("frame", state.frameCount, "fps", displayFps.toFixed(1), "sprites", sprites.length, "mode", useWebGL ? "webgl" : "2d");
+      log(
+        "frame",
+        state.frameCount,
+        "fps",
+        displayFps.toFixed(1),
+        "sprites",
+        sprites.length,
+        "drawCalls",
+        drawCallCount
+      );
     }
     requestFrame(tick);
   }
   log("start");
   if (state.hasWx && typeof wx.showToast === "function") {
     try {
-      wx.showToast({ title: "Runtime smoke", icon: "none", duration: 1500 });
+      wx.showToast({ title: "WebGL smoke", icon: "none", duration: 1500 });
     } catch (_) {
     }
   }
   var canvasOk = setupCanvas();
   if (!canvasOk) {
-    warn("FATAL: primary canvas failed, status:", JSON.stringify(state.status));
+    warn("FATAL: primary canvas failed");
     state.summary = "fail";
   } else {
-    var c2d = ctx;
-    if (c2d) {
-      c2d.fillStyle = "#141a22";
-      c2d.fillRect(0, 0, canvasWidth, canvasHeight);
-      c2d.fillStyle = "#f4f7fb";
-      c2d.font = "bold 20px monospace";
-      c2d.fillText("Membrane loading...", 12, 30);
+    var glOk = setupWebGL();
+    if (!glOk) {
+      warn("FATAL: WebGL failed on primary canvas, status:", JSON.stringify(state.status));
+      state.summary = "webgl-fail";
+    } else {
+      setupTouch();
+      initSprites();
+      requestFrame(tick);
+      log("loop started, sprites:", sprites.length);
+      state.summary = "running";
     }
-    useWebGL = false;
-    state.glMode = false;
-    state.status.gl = "skipped";
-    log("render mode: Canvas2D (forced)");
-    setupTouch();
-    initSprites();
-    requestFrame(tick);
-    log("loop started, sprites:", sprites.length);
   }
-  state.summary = canvasOk ? "running" : "fail";
   if (typeof globalThis !== "undefined") {
     globalThis.__MEMBRANE_WX_SMOKE__ = state;
   }
