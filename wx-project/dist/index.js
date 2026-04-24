@@ -415,6 +415,36 @@
     ctx.fillStyle = "#666";
     ctx.fillText("tap to spawn", canvasWidth - 120, 74);
   }
+  var rafSource = "none";
+  function requestFrame(cb) {
+    if (canvas && typeof canvas.requestAnimationFrame === "function") {
+      canvas.requestAnimationFrame(cb);
+      if (rafSource === "none") {
+        rafSource = "canvas.raf";
+        log("raf source: canvas.requestAnimationFrame");
+      }
+    } else if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(cb);
+      if (rafSource === "none") {
+        rafSource = "global.raf";
+        log("raf source: global requestAnimationFrame");
+      }
+    } else if (state.hasWx && typeof wx.requestAnimationFrame === "function") {
+      wx.requestAnimationFrame(cb);
+      if (rafSource === "none") {
+        rafSource = "wx.raf";
+        log("raf source: wx.requestAnimationFrame");
+      }
+    } else {
+      setTimeout(function() {
+        cb(Date.now());
+      }, 16);
+      if (rafSource === "none") {
+        rafSource = "setTimeout";
+        log("raf source: setTimeout fallback (16ms)");
+      }
+    }
+  }
   var lastTime = 0;
   function tick(timestamp) {
     if (lastTime === 0) lastTime = timestamp;
@@ -443,9 +473,7 @@
     if (state.frameCount === 1 || state.frameCount % 120 === 0) {
       log("frame", state.frameCount, "fps", displayFps.toFixed(1), "sprites", sprites.length, "mode", useWebGL ? "webgl" : "2d");
     }
-    if (state.hasWx && typeof wx.requestAnimationFrame === "function") {
-      wx.requestAnimationFrame(tick);
-    }
+    requestFrame(tick);
   }
   log("start");
   if (state.hasWx && typeof wx.showToast === "function") {
@@ -471,13 +499,8 @@
     log("render mode:", useWebGL ? "WebGL" : "Canvas2D");
     setupTouch();
     initSprites();
-    if (state.hasWx && typeof wx.requestAnimationFrame === "function") {
-      wx.requestAnimationFrame(tick);
-      log("loop started, sprites:", sprites.length);
-    } else {
-      warn("wx.requestAnimationFrame unavailable");
-      state.status.loop = "no-raf";
-    }
+    requestFrame(tick);
+    log("loop started, sprites:", sprites.length);
   }
   state.summary = canvasOk ? "running" : "fail";
   if (typeof globalThis !== "undefined") {
