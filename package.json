@@ -2,12 +2,17 @@
   "name": "membrane",
   "version": "0.1.0",
   "description": "The Runtime Layer for AI-Native Games",
+  "packageManager": "pnpm@10.33.2",
   "type": "module",
   "main": "dist/membrane.js",
   "scripts": {
     "build": "esbuild src/index.ts --bundle --outfile=dist/membrane.js --format=esm --platform=neutral --target=es2020",
+    "build:wx-smoke": "esbuild src/wx-smoke-bootstrap.cts --bundle --outfile=wx-project/dist/index.js --format=cjs --platform=neutral --target=es2020",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "smoke:local": "powershell -ExecutionPolicy Bypass -File tools/wx-smoke/Invoke-LocalSmoke.ps1",
+    "smoke:wx:local": "corepack pnpm build:wx-smoke && powershell -ExecutionPolicy Bypass -File tools/wx-smoke/Invoke-LocalSmoke.ps1"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",

@@ -28,15 +28,33 @@
   - `wx-project/` 最小壳工程
 
 - 补 `wx-smoke-bootstrap` 最小实现：
+  - `src/wx-smoke-bootstrap.cts`
   - `wx-project/game.js`
   - `wx-project/dist/index.js`
   - `wx-project/assets/bootstrap.txt`
+
+- 把根目录脚手架接到微信 smoke：
+  - `package.json#packageManager`
+  - `package.json#scripts.build:wx-smoke`
+  - `package.json#scripts.smoke:wx:local`
 
 ### 当前状态
 
 - 本地 Node 验证已通过：
   - `node wx-project/dist/index.js`
   - `node wx-project/game.js`
+- 根目录脚手架验证已通过：
+  - `corepack pnpm test`
+  - `corepack pnpm typecheck`
+  - `corepack pnpm build`
+  - `corepack pnpm build:wx-smoke`
+- 微信 smoke tooling 已固定：
+  - `tools/wx-smoke/Invoke-LocalSmoke.ps1`
+  - `tools/wx-smoke/Sync-WxSmoke.ps1`
+  - `wx-project/reports/.gitignore`
+- 脚本化本地 smoke 已通过：
+  - `corepack pnpm smoke:wx:local`
+  - 产物：`wx-project/reports/local-smoke.log`
 
 - 微信开发者工具 / 真机验证：
   - **还没执行**

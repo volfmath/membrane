@@ -76,6 +76,21 @@ Membrane Runtime                    Membrane Runtime
 
 Phase 1 · Step 1 → 项目脚手架搭建
 
+## 当前命令
+
+```powershell
+corepack pnpm install
+corepack pnpm test
+corepack pnpm typecheck
+corepack pnpm build
+corepack pnpm build:wx-smoke
+corepack pnpm smoke:wx:local
+```
+
+- `build` 产出根目录运行时占位包：`dist/membrane.js`
+- `build:wx-smoke` 产出微信 smoke 入口：`wx-project/dist/index.js`
+- `smoke:wx:local` 会先重新构建微信 smoke 入口，再执行本地 Node smoke
+
 ## License
 
 MIT

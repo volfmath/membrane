@@ -48,9 +48,14 @@ wx-project/
 
 推荐命令序列：
 
-```bash
-pnpm build
-# 同步 dist 到 wx-project/dist（具体命令由后续工具链决定）
+```powershell
+# 当前 stub / Step 1 验证
+corepack pnpm build:wx-smoke
+corepack pnpm smoke:wx:local
+
+# 有真实构建产物后
+corepack pnpm build
+powershell -ExecutionPolicy Bypass -File .\tools\wx-smoke\Sync-WxSmoke.ps1 -SourceDist .\dist -CaseId wx-smoke-platform
 ```
 
 ## 固定 smoke case
@@ -115,3 +120,16 @@ pnpm build
 - [wx-project/README.md](/E:/membrane/wx-project/README.md)
 - [wx-smoke-log.md](/E:/membrane/docs/wx-smoke-log.md)
 - [implementation_roadmap.md](/E:/membrane/docs/implementation_roadmap.md)
+
+## 工具命令
+
+```powershell
+corepack pnpm build:wx-smoke
+corepack pnpm smoke:wx:local
+powershell -ExecutionPolicy Bypass -File .\tools\wx-smoke\Sync-WxSmoke.ps1 -SourceDist .\dist -CaseId wx-smoke-platform
+```
+
+- `build:wx-smoke` 会把 `src/wx-smoke-bootstrap.cts` 编译到 `wx-project/dist/index.js`。
+- `smoke:wx:local` 是当前 Step 1 的固定 L0/L1 入口。
+- `Sync-WxSmoke.ps1` 是后续真实运行时产物进入 DevTools / 真机 smoke 前的固定同步入口。
+- 两个脚本都会把附件写到 `wx-project/reports/`，该目录默认已被 git 忽略。
