@@ -38,51 +38,37 @@
   - `package.json#scripts.build:wx-smoke`
   - `package.json#scripts.smoke:wx:local`
 
-### 当前状态
+### 已完成 — 运行时核心 (Steps 2–11)
 
-- 本地 Node 验证已通过：
-  - `node wx-project/dist/index.js`
-  - `node wx-project/game.js`
-- 根目录脚手架验证已通过：
-  - `corepack pnpm test`
-  - `corepack pnpm typecheck`
-  - `corepack pnpm build`
-  - `corepack pnpm build:wx-smoke`
-- 微信 smoke tooling 已固定：
-  - `tools/wx-smoke/Invoke-LocalSmoke.ps1`
-  - `tools/wx-smoke/Sync-WxSmoke.ps1`
-  - `wx-project/reports/.gitignore`
-- 脚本化本地 smoke 已通过：
-  - `corepack pnpm smoke:wx:local`
-  - 产物：`wx-project/reports/local-smoke.log`
+- **Math 库** (Step 2–3): Vec2, Vec3, Mat4, MathPool — 零 GC、Float32Array 背板、out 参数模式 (64 tests)
+- **ECS 核心** (Step 4–5): EntityManager (16-bit gen + 16-bit index)、ComponentRegistry、ComponentStorage (SoA Table + SparseSet 双模式)、BigInt 64-bit archetype bitmask、Change Detection (Bevy 风格 tick)、ArchetypeQuery、phase-ordered Scheduler、World facade (52 tests)
+- **平台抽象** (Step 6): PlatformAdapter 接口、BrowserAdapter、WxAdapter（含 raf 四级 fallback）
+- **WebGL 渲染** (Step 7–8): GLStateCache (冗余 GL 调用消除)、shader-utils、WebGLDevice (context lost/restored)、SpriteBatcher (2048 sprites/batch) (8 tests)
+- **资源格式** (Step 9): BundleWriter/BundleReader — WXGE magic、TOC + data、零拷贝 subarray 视图 (14 tests)
+- **Engine + Plugin** (Step 10): Engine 主循环 (raf + dt clamp + FPS)、MembranePlugin 函数式系统 (17 tests)
+- **输入系统** (Step 11): InputManager — 事件缓冲、10 点触控、零 GC 对象池、tap/swipe 手势检测 (28 tests)
 
-- 微信开发者工具 / 真机验证：
-  - **还没执行**
-  - 当前处于“可进 DevTools 做第一轮 smoke”的状态
+**总计: 184 tests 全通过, TypeScript strict 模式干净**
 
-### 当前最小 smoke 目标
+### 微信 Smoke 验证
 
-第一次 `wx-smoke-bootstrap` 只需要验证：
-- `wx-project/` 能被微信开发者工具导入
-- 手机扫码可进入
-- `game.js` 启动日志可见
-- toast 可见
-- `dist/index.js` 被加载
-- 屏幕状态面板显示：
-  - `canvas: ready`
-  - `raf: running`
-  - `readFile: ready`
-  - `touch: pending`，触摸后切换
+- **wx-smoke-bootstrap**: ✅ DevTools + 真机通过
+- **wx-smoke-runtime**: ✅ DevTools + 真机通过
+  - Canvas2D 模式 (主 canvas 直接渲染)
+  - 16 个弹跳彩色方块, 触摸生成新方块, FPS 显示
+  - DevTools: WebGL 模式可用, ~58 FPS (iPhone 12/13 Pro 模拟)
+
+### 发现的微信平台问题
+
+| 问题 | 表现 | 解法 |
+|------|------|------|
+| `wx.requestAnimationFrame` 不存在 | DevTools 中循环不启动 | canvas.raf → global raf → wx.raf → setTimeout 四级 fallback |
+| 只有第一个 canvas 可见 | HUD 画在第二个 canvas 上，屏幕黑 | 所有渲染都在主 canvas 上 |
+| 跨 canvas drawImage 真机失败 | WebGL 渲染到二级 canvas + drawImage 合成，真机黑屏 | 强制 Canvas2D；WebGL 需直接用主 canvas |
+| ES2020 语法不兼容 | `?.` / `??` 运行报错 | esbuild `--target=es6` |
 
 ### 下一步
 
-1. 真正执行一次 `wx-smoke-bootstrap`
-2. 把结果记入 `docs/wx-smoke-log.md`
-3. 若通过，再推进 `wx-smoke-platform`
-4. 若失败，优先修平台壳工程，不往后堆功能
-
-### 风险 / 未决事项
-
-- 还没验证 `wx.createCanvas()` 在当前开发者工具版本下的行为
-- 还没验证 `assets/bootstrap.txt` 的路径在小游戏文件系统中是否直接可读
-- 还没验证 toast / console / 2D canvas 在真机和 DevTools 是否一致
+1. Step 12: Cocos Creator 单向导入链路
+2. `wx-smoke-webgl`: 主 canvas 直接 WebGL 渲染验证
+3. Step 13: 微信发布流程

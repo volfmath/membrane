@@ -72,24 +72,51 @@ Membrane Runtime                    Membrane Runtime
 | 精灵合批 | 激进合批 (跨层级) | 保守合批 (同层级) |
 | 资源读取 | 零拷贝 Uint8Array 视图 | 多次拷贝 |
 
-## 当前阶段
+## 实现进度
 
-Phase 1 · Step 1 → 项目脚手架搭建
+**Phase 1 · Steps 1–11 已完成** — 184 tests 全通过，真机 smoke 验证通过
 
-## 当前命令
+| Step | 模块 | 关键文件 | 测试 |
+|------|------|----------|------|
+| 1 | 项目脚手架 | `package.json`, `tsconfig.json`, `vitest.config.ts` | 1 |
+| 2–3 | Math 库 | `src/math/` — Vec2, Vec3, Mat4, MathPool | 64 |
+| 4–5 | ECS 核心 | `src/ecs/` — Entity, Component, Query, Scheduler, World | 52 |
+| 6 | 平台抽象 | `src/platform/` — BrowserAdapter, WxAdapter | — |
+| 7–8 | WebGL 渲染 | `src/renderer/` — GLStateCache, WebGLDevice, SpriteBatcher | 8 |
+| 9 | 资源格式 | `src/asset/` — BundleWriter, BundleReader (WXGE binary) | 14 |
+| 10 | Engine + Plugin | `src/core/engine.ts` — 主循环, MembranePlugin (Bevy 风格) | 17 |
+| 11 | 输入系统 | `src/input/input-manager.ts` — 多点触控, 手势检测, 零 GC | 28 |
 
-```powershell
-corepack pnpm install
-corepack pnpm test
-corepack pnpm typecheck
-corepack pnpm build
-corepack pnpm build:wx-smoke
-corepack pnpm smoke:wx:local
+### 真机 Smoke 验证
+
+| 用例 | 状态 | 日期 |
+|------|------|------|
+| `wx-smoke-bootstrap` | ✅ 通过 | 2026-04-24 |
+| `wx-smoke-runtime` | ✅ 通过 (Canvas2D, 16 sprites, touch spawn, FPS) | 2026-04-24 |
+
+### 微信平台经验
+
+- `requestAnimationFrame` 在 canvas 对象上，不是 `wx` 全局
+- 只有第一个 `wx.createCanvas()` 可见，后续 canvas 都是 off-screen
+- 跨 canvas `drawImage` 合成（WebGL→2D）真机不工作
+- 构建目标必须 `--target=es6`，ES2020 语法真机不支持
+
+### 下一步
+
+- Step 12: Cocos Creator 单向导入链路
+- `wx-smoke-webgl`: 主 canvas 直接 WebGL 渲染验证
+- Step 13: 微信发布流程
+
+## 命令
+
+```bash
+pnpm install          # 安装依赖
+pnpm test             # 运行 184 个单元测试
+pnpm typecheck        # TypeScript 严格模式检查
+pnpm build            # 构建运行时库
+pnpm build:wx-smoke   # 构建 bootstrap smoke → wx-project/dist/index.js
+pnpm build:wx-runtime # 构建 runtime smoke → wx-project/dist/index.js
 ```
-
-- `build` 产出根目录运行时占位包：`dist/membrane.js`
-- `build:wx-smoke` 产出微信 smoke 入口：`wx-project/dist/index.js`
-- `smoke:wx:local` 会先重新构建微信 smoke 入口，再执行本地 Node smoke
 
 ## License
 
