@@ -31,8 +31,8 @@ wx-project/
 ```
 
 - `game.js`：最小 bootstrap
-- `dist/`：本地构建产物落点
-- `assets/`：固定 smoke 资源
+- `dist/`：本地构建产物落点；当前包含一个最小 `dist/index.js` smoke stub
+- `assets/`：固定 smoke 资源，例如 `assets/bootstrap.txt`
 - `reports/`：截图、日志、导出报告
 
 ## 统一执行流程
@@ -71,6 +71,8 @@ pnpm build
 
 - 项目能正常导入
 - `game.js` 启动无同步异常
+- `dist/index.js` 能正常加载
+- `assets/bootstrap.txt` 可作为固定 readFile smoke 夹具
 - console 没有红字崩溃
 - 若存在 `dist/index.js`，能正常加载
 

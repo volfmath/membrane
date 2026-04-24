@@ -32,10 +32,10 @@ wx-project/
   微信开发者工具项目配置。当前使用最小 smoke 配置，方便导入。
 
 - `dist/`
-  构建产物落点。后续由 `pnpm build` 的输出同步到这里。
+  构建产物落点。当前仓库内先保留一个 `dist/index.js` smoke stub，保证 Step 1 就能验证 `require('./dist/index.js')` 这条链路；后续再由真实 `pnpm build` 产物替换。
 
 - `assets/`
-  固定 smoke 资源，例如 1x1 白纹理、测试图集、测试音频。
+  固定 smoke 资源，例如 1x1 白纹理、测试图集、测试音频、`assets/bootstrap.txt` 这类读文件 smoke 夹具。
 
 - `reports/`
   截图、错误日志、导入报告、手工记录附件。
@@ -47,8 +47,18 @@ wx-project/
 只验证：
 - 开发者工具可以打开 `wx-project/`
 - `game.js` 能启动
+- `dist/index.js` smoke stub 能被加载
+- `assets/bootstrap.txt` 可作为固定 readFile 夹具
 - 真机扫码能进入
 - console / toast 有固定启动反馈
+
+**当前 bootstrap stub 的预期屏幕状态**:
+- `canvas: ready`
+- `raf: running`
+- `readFile: ready`
+- `touch: pending`（未触摸前）
+- 触摸屏幕后 `touch` 会切到 `start / move / end`
+- `asset:` 行显示 `membrane-wx-smoke-bootstrap`
 
 ### Step 6 之后
 

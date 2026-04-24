@@ -26,7 +26,7 @@ Expected:
 Actual:
 
 Result:
-  - PASS / FAIL
+  - PASS / FAIL / PENDING
 
 Artifacts:
   - screenshot:
@@ -34,6 +34,52 @@ Artifacts:
   - extra report:
 
 Notes:
+```
+
+---
+
+## 当前待执行项
+
+```text
+Date: 2026-04-24
+Commit: uncommitted-local
+Branch: main
+Smoke Case: wx-smoke-bootstrap
+Operator: codex
+
+DevTools Version: pending
+Device: pending
+OS: pending
+WeChat Version: pending
+
+Build Source:
+  - dist synced from: wx-project/dist/index.js (stub)
+  - assets version: wx-project/assets/bootstrap.txt
+
+Expected:
+  - project opens in DevTools
+  - phone scan launches
+  - startup toast visible
+  - screen panel shows:
+      canvas: ready
+      raf: running
+      readFile: ready
+      touch: start/end after interaction
+
+Actual:
+  - not executed in WeChat yet
+
+Result:
+  - PENDING
+
+Artifacts:
+  - screenshot: pending
+  - console log: pending
+  - extra report: none
+
+Notes:
+  - local Node smoke passed
+  - WeChat DevTools / real device smoke still required
 ```
 
 ---

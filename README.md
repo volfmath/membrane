@@ -59,6 +59,7 @@ Membrane Runtime                    Membrane Runtime
 | Canonical Format | [docs/api/canonical-format.md](./docs/api/canonical-format.md) | AI 可读的场景 / 资源源格式 |
 | Importer CLI | [docs/api/importer-cli.md](./docs/api/importer-cli.md) | 单向导入、校验、编译命令约定 |
 | WeChat Smoke | [docs/wx-smoke-workflow.md](./docs/wx-smoke-workflow.md) | 真机 smoke 流程、checklist、记录方式 |
+| Development Log | [docs/development-log.md](./docs/development-log.md) | 当前阶段改动、验证状态、下一步计划 |
 
 ## 核心技术优势
 
