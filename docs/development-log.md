@@ -94,8 +94,15 @@
 
 **Step 12F-G 新增测试: 18 tests → 总计 276 tests 全通过**
 
+### 已完成 — Runtime Scene Loader (Step 12H)
+
+- **Loader Types** (Step 12H): `CompiledSceneData` / `CompiledEntity` 共享类型定义
+- **Scene Loader** (Step 12H): `loadSceneFromBundle()` 从 WXGE bundle 读取场景并实例化 ECS 实体；`loadSceneData()` 从 JSON 数据直接加载；支持 `SceneLoaderConfig` 指定每个组件的字段映射
+- **完整 round-trip**: BundleWriter → serialize → BundleReader → loadSceneFromBundle → ECS World 实体 + 组件数据验证 (11 tests)
+
+**Step 12H 新增测试: 11 tests → 总计 287 tests 全通过**
+
 ### 下一步
 
-1. Step 12H: Runtime smoke load — 编译场景在浏览器/微信加载
-2. `wx-smoke-webgl`: 主 canvas 直接 WebGL 渲染验证
-3. Step 13: 微信发布流程
+1. `wx-smoke-webgl`: 主 canvas 直接 WebGL 渲染验证
+2. Step 13: 微信发布流程
