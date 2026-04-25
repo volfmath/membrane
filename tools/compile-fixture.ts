@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const COCOS_PROJECT = 'D:/majonggame';
-const OUTPUT = resolve(__dirname, '../wx-project/assets/scene-data.json');
+const OUTPUT = resolve(__dirname, '../wx-project/assets/scene-data.js');
 
 if (!existsSync(resolve(COCOS_PROJECT, 'assets'))) {
   console.error('Cocos project not found at', COCOS_PROJECT);
@@ -54,7 +54,7 @@ const fixtureData = {
 };
 
 mkdirSync(resolve(__dirname, '../wx-project/assets'), { recursive: true });
-writeFileSync(OUTPUT, JSON.stringify(fixtureData, null, 2), 'utf-8');
+writeFileSync(OUTPUT, 'module.exports = ' + JSON.stringify(fixtureData) + ';\n', 'utf-8');
 
 const bytes = Buffer.byteLength(JSON.stringify(fixtureData));
 console.log('Written', OUTPUT, `(${(bytes / 1024).toFixed(1)}KB)`);

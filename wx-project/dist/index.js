@@ -1517,7 +1517,7 @@ function loadSceneData(sceneData, world, config) {
   function loadFixture() {
     var _a;
     try {
-      var fixture = require("./assets/scene-data.json");
+      var fixture = require("../assets/scene-data");
       if (fixture && fixture.scenes) {
         fixtureScenes = fixture.scenes;
         log("loaded fixture:", fixtureScenes.length, "scenes");
@@ -1636,8 +1636,7 @@ function loadSceneData(sceneData, world, config) {
         color = packABGR(100, 149, 237, 255);
         size = 12;
       } else if (hasSprite) {
-        var order = orderField[idx] || 0;
-        color = hslToABGR(order * 37 % 360, 70, 55);
+        color = hslToABGR((i * 47 + 30) % 360, 65, 55);
         size = 8;
       } else {
         color = packABGR(100, 100, 120, 180);
@@ -1645,8 +1644,8 @@ function loadSceneData(sceneData, world, config) {
       }
       var sx = sxField[idx] || 1;
       var sy = syField[idx] || 1;
-      var w = size * Math.abs(sx);
-      var h = size * Math.abs(sy);
+      var w = Math.min(size * Math.abs(sx), 40);
+      var h = Math.min(size * Math.abs(sy), 40);
       batcher.draw(whiteTexture, screenX - w / 2, screenY - h / 2, w, h, 0, 0, 0, 1, 1, color);
     }
     batcher.end();
