@@ -182,7 +182,56 @@
 
 **Step 15 新增测试: 41 tests (27 + 14) → 总计 354 tests 全通过**
 
+### 已完成 — AI 连接器 (Step 16)
+
+- **连接器基础设施** (16A): `tools/ai/types.ts` + `tools/ai/config.ts`
+  - 共享类型: AIConnectorConfig, AIResponse, GeneratedScene/Image/Audio, ResearchResult, LocalizedContent
+  - 环境变量配置: ANTHROPIC_API_KEY, OPENAI_API_KEY, PERPLEXITY_API_KEY, SUNO_API_KEY
+  - 5 测试
+
+- **Claude 连接器** (16B): `tools/ai/claude.ts`
+  - generateScene: 自然语言 → canonical 场景 (实体 + 事件)
+  - generateEvents: 为已有场景生成事件规则
+  - generateSystemCode: 生成 ECS System 代码
+  - System prompt 包含 canonical format schema
+  - 7 测试
+
+- **GPT Image 连接器** (16C): `tools/ai/openai-image.ts`
+  - generateSprite: 生成精灵图片 (256x256 ~ 1024x1024)
+  - generateBackground: 生成背景图片
+  - 支持 b64_json 和 URL 两种响应格式
+  - 5 测试
+
+- **Perplexity 连接器** (16D): `tools/ai/perplexity.ts`
+  - research: 搜索游戏设计参考
+  - generateGDD: 生成游戏设计文档大纲
+  - 使用 Sonar 模型 (带搜索)
+  - 4 测试
+
+- **音效 AI 连接器** (16E): `tools/ai/audio.ts`
+  - generateMusic: 生成 BGM (Suno API)
+  - generateSFX: 生成音效
+  - 4 测试
+
+- **本地化连接器** (16F): `tools/ai/localize.ts`
+  - translateContent: 批量翻译文本
+  - translateScene: 翻译场景实体名 (保留 ID)
+  - 支持术语 glossary
+  - 5 测试
+
+- **Orchestrator** (16G): `tools/ai/orchestrator.ts`
+  - createGameWorkflow: 预定义工作流模板 (research → scene → sprites → bgm)
+  - runWorkflow: 拓扑排序执行, 依赖检查, 错误跳过
+  - 与 ProjectDataManager 集成: 生成结果自动写入 canonical
+  - 6 测试
+
+- **MCP 集成** (16H): 6 个新 AI tools 添加到 MCP server
+  - ai_generate_scene, ai_generate_sprite, ai_research
+  - ai_generate_audio, ai_localize, ai_workflow
+
+**Step 16 新增测试: 36 tests → 总计 390 tests 全通过**
+
 ### 下一步
 
 1. 真机验证 wx-smoke-engine 和 wx-smoke-scene
-2. Step 16: AI 连接器
+2. Step 17: Notion-like 创作界面
