@@ -24,6 +24,7 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
   const TILE_W = 64;
   const TILE_H = 86;
   const TILE_SHADOW = 4;
+  const TILE_WORLD_SCALE = 0.68;
   const GRID_COLS = 5;
   const GRID_ROWS = 7;
 
@@ -837,8 +838,8 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
       const t = worldTiles[i];
       if (t.removing || t.blocked) continue;
       // Project top-face corners to screen and form AABB
-      const y1 = t.wy + 1;
-      const dx = 1.2, dz = 1.7;
+      const y1 = t.wy + TILE_WORLD_SCALE;
+      const dx = 1.2 * TILE_WORLD_SCALE, dz = 1.7 * TILE_WORLD_SCALE;
       let mnX = Infinity, mxX = -Infinity, mnY = Infinity, mxY = -Infinity;
       const corners = [
         camera3d.worldToScreen(t.wx-dx, y1, t.wz-dz, W, H),
@@ -1026,7 +1027,7 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     gl.uniform1i(uTex3, 0);
     for (const t of worldTiles) {
       if (t.removing && t.removeT >= 1) continue;
-      gl.uniformMatrix4fv(uMVP3, false, camera3d.buildMVP(t.wx, t.wy, t.wz));
+      gl.uniformMatrix4fv(uMVP3, false, camera3d.buildMVP(t.wx, t.wy, t.wz, TILE_WORLD_SCALE));
       const uv = TILE_UV[t.id];
       gl.uniform4f(uUVR3, uv?.u0 ?? 0, uv?.v0 ?? 0, uv?.u1 ?? 1, uv?.v1 ?? 1);
       const removeFade = t.removing ? Math.max(0, 1 - t.removeT * 2) : 1;
@@ -1075,7 +1076,7 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
         }
       }
       // Update screen projection for hit testing
-      const sc = camera3d.worldToScreen(t.wx, t.wy + 1, t.wz, W, H);
+      const sc = camera3d.worldToScreen(t.wx, t.wy + TILE_WORLD_SCALE, t.wz, W, H);
       if (sc) { t.sx = sc.x; t.sy = sc.y; }
     }
 

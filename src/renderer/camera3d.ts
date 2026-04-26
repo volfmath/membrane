@@ -23,12 +23,12 @@ export class Camera3D {
     Mat4.multiply(this.projMat, this.viewMat, this.vpMat);
   }
 
-  // VP * translate(tx, ty, tz) — optimized for translation-only model matrix
-  buildMVP(tx: number, ty: number, tz: number): Float32Array {
+  // VP * translate(tx, ty, tz) * uniformScale(scale) — optimized for translation + uniform scale
+  buildMVP(tx: number, ty: number, tz: number, scale = 1): Float32Array {
     const v = this.vpMat.data, m = this._mvp.data;
-    m[0]=v[0]; m[1]=v[1]; m[2]=v[2]; m[3]=v[3];
-    m[4]=v[4]; m[5]=v[5]; m[6]=v[6]; m[7]=v[7];
-    m[8]=v[8]; m[9]=v[9]; m[10]=v[10]; m[11]=v[11];
+    m[0]=v[0]*scale; m[1]=v[1]*scale; m[2]=v[2]*scale; m[3]=v[3]*scale;
+    m[4]=v[4]*scale; m[5]=v[5]*scale; m[6]=v[6]*scale; m[7]=v[7]*scale;
+    m[8]=v[8]*scale; m[9]=v[9]*scale; m[10]=v[10]*scale; m[11]=v[11]*scale;
     m[12]=v[0]*tx+v[4]*ty+v[8]*tz+v[12];
     m[13]=v[1]*tx+v[5]*ty+v[9]*tz+v[13];
     m[14]=v[2]*tx+v[6]*ty+v[10]*tz+v[14];

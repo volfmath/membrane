@@ -1078,21 +1078,21 @@ var Camera3D = class {
     Mat4.perspective(fovY, aspect, near, far, this.projMat);
     Mat4.multiply(this.projMat, this.viewMat, this.vpMat);
   }
-  // VP * translate(tx, ty, tz) — optimized for translation-only model matrix
-  buildMVP(tx, ty, tz) {
+  // VP * translate(tx, ty, tz) * uniformScale(scale) — optimized for translation + uniform scale
+  buildMVP(tx, ty, tz, scale = 1) {
     const v = this.vpMat.data, m = this._mvp.data;
-    m[0] = v[0];
-    m[1] = v[1];
-    m[2] = v[2];
-    m[3] = v[3];
-    m[4] = v[4];
-    m[5] = v[5];
-    m[6] = v[6];
-    m[7] = v[7];
-    m[8] = v[8];
-    m[9] = v[9];
-    m[10] = v[10];
-    m[11] = v[11];
+    m[0] = v[0] * scale;
+    m[1] = v[1] * scale;
+    m[2] = v[2] * scale;
+    m[3] = v[3] * scale;
+    m[4] = v[4] * scale;
+    m[5] = v[5] * scale;
+    m[6] = v[6] * scale;
+    m[7] = v[7] * scale;
+    m[8] = v[8] * scale;
+    m[9] = v[9] * scale;
+    m[10] = v[10] * scale;
+    m[11] = v[11] * scale;
     m[12] = v[0] * tx + v[4] * ty + v[8] * tz + v[12];
     m[13] = v[1] * tx + v[5] * ty + v[9] * tz + v[13];
     m[14] = v[2] * tx + v[6] * ty + v[10] * tz + v[14];
@@ -2260,6 +2260,7 @@ var TILE_INDICES = new Uint16Array([
   const TILE_W = 64;
   const TILE_H = 86;
   const TILE_SHADOW = 4;
+  const TILE_WORLD_SCALE = 0.68;
   const GRID_COLS = 5;
   const GRID_ROWS = 7;
   const TSPACE_X = 3.2;
@@ -3015,8 +3016,8 @@ var TILE_INDICES = new Uint16Array([
     for (let i = 0; i < worldTiles.length; i++) {
       const t = worldTiles[i];
       if (t.removing || t.blocked) continue;
-      const y1 = t.wy + 1;
-      const dx = 1.2, dz = 1.7;
+      const y1 = t.wy + TILE_WORLD_SCALE;
+      const dx = 1.2 * TILE_WORLD_SCALE, dz = 1.7 * TILE_WORLD_SCALE;
       let mnX = Infinity, mxX = -Infinity, mnY = Infinity, mxY = -Infinity;
       const corners = [
         camera3d.worldToScreen(t.wx - dx, y1, t.wz - dz, W, H2),
@@ -3219,7 +3220,7 @@ var TILE_INDICES = new Uint16Array([
     gl.uniform1i(uTex3, 0);
     for (const t of worldTiles) {
       if (t.removing && t.removeT >= 1) continue;
-      gl.uniformMatrix4fv(uMVP3, false, camera3d.buildMVP(t.wx, t.wy, t.wz));
+      gl.uniformMatrix4fv(uMVP3, false, camera3d.buildMVP(t.wx, t.wy, t.wz, TILE_WORLD_SCALE));
       const uv = TILE_UV[t.id];
       gl.uniform4f(uUVR3, (_a = uv == null ? void 0 : uv.u0) != null ? _a : 0, (_b = uv == null ? void 0 : uv.v0) != null ? _b : 0, (_c = uv == null ? void 0 : uv.u1) != null ? _c : 1, (_d = uv == null ? void 0 : uv.v1) != null ? _d : 1);
       const removeFade = t.removing ? Math.max(0, 1 - t.removeT * 2) : 1;
@@ -3268,7 +3269,7 @@ var TILE_INDICES = new Uint16Array([
           t.animating = false;
         }
       }
-      const sc = camera3d.worldToScreen(t.wx, t.wy + 1, t.wz, W, H2);
+      const sc = camera3d.worldToScreen(t.wx, t.wy + TILE_WORLD_SCALE, t.wz, W, H2);
       if (sc) {
         t.sx = sc.x;
         t.sy = sc.y;
