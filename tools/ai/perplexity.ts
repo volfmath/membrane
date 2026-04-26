@@ -1,4 +1,5 @@
 import type { AIConnectorConfig, AIResponse, ResearchResult } from './types.js';
+import { extractJson } from './json-extract.js';
 
 export interface GDDResult {
   title: string;
@@ -87,11 +88,11 @@ async function callPerplexity<T>(
       : undefined;
 
     try {
-      const jsonMatch = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-      if (!jsonMatch) {
+      const jsonStr = extractJson(text);
+      if (!jsonStr) {
         return { ok: false, error: 'No JSON found in response', usage };
       }
-      const parsed = JSON.parse(jsonMatch[0]) as T;
+      const parsed = JSON.parse(jsonStr) as T;
       return { ok: true, data: parsed, usage };
     } catch (e: any) {
       return { ok: false, error: `JSON parse error: ${e.message}`, usage };

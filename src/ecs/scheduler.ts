@@ -57,9 +57,9 @@ export class Scheduler {
         if (query !== null) {
           const lastTick = this.lastRunTicks.get(system) ?? 0;
           const hasTickFilters = query.hasTickFilters;
-          const capacity = world.storage.capacity;
+          const hwm = world.entities.highWaterMark;
 
-          for (let e = 0; e < capacity; e++) {
+          for (let e = 0; e < hwm; e++) {
             const arch = world.storage.getArchetype(e);
             if (arch === 0n) continue;
             if (!query.matchesArchetype(arch)) continue;

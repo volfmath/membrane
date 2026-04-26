@@ -137,6 +137,7 @@ import type { EntityId } from './ecs/types';
   var cameraId: number;
 
   var loadedEntityIds: EntityId[] = [];
+  var loadedMetaByEntity = new Map<EntityId, { enabled: boolean }>();
   var loadedSceneId = '';
   var currentSceneIndex = 0;
 
@@ -200,6 +201,7 @@ import type { EntityId } from './ecs/types';
     // Reset world
     world.reset();
     loadedEntityIds = [];
+    loadedMetaByEntity.clear();
 
     if (fixtureScenes.length === 0) return;
 
@@ -208,6 +210,7 @@ import type { EntityId } from './ecs/types';
 
     var result = loadSceneData(sceneData, world, LOADER_CONFIG);
     loadedEntityIds = result.entityIds;
+    loadedMetaByEntity = result.metaByEntity;
 
     log('loaded scene:', loadedSceneId, 'entities:', result.entityCount);
 
@@ -215,6 +218,8 @@ import type { EntityId } from './ecs/types';
     var spriteCount = 0;
     var cameraCount = 0;
     for (var eid of loadedEntityIds) {
+      var meta = loadedMetaByEntity.get(eid);
+      if (meta && meta.enabled === false) continue;
       if (world.hasComponent(eid, spriteId)) spriteCount++;
       if (world.hasComponent(eid, cameraId)) cameraCount++;
     }
@@ -254,12 +259,22 @@ import type { EntityId } from './ecs/types';
     // Apply simple scale and offset to fit entities on screen
     var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (var i = 0; i < loadedEntityIds.length; i++) {
-      var idx = EntityManager.getIndex(loadedEntityIds[i]);
+      var eid = loadedEntityIds[i];
+      var meta = loadedMetaByEntity.get(eid);
+      if (meta && meta.enabled === false) continue;
+      var idx = EntityManager.getIndex(eid);
       var ex = xField[idx], ey = yField[idx];
       if (ex < minX) minX = ex;
       if (ex > maxX) maxX = ex;
       if (ey < minY) minY = ey;
       if (ey > maxY) maxY = ey;
+    }
+
+    if (minX === Infinity || minY === Infinity) {
+      minX = 0;
+      maxX = 1;
+      minY = 0;
+      maxY = 1;
     }
 
     var rangeX = maxX - minX || 1;
@@ -271,6 +286,8 @@ import type { EntityId } from './ecs/types';
 
     for (var i = 0; i < loadedEntityIds.length; i++) {
       var eid = loadedEntityIds[i];
+      var meta = loadedMetaByEntity.get(eid);
+      if (meta && meta.enabled === false) continue;
       var idx = EntityManager.getIndex(eid);
 
       var screenX = padding + (xField[idx] - minX) * scale;
@@ -321,16 +338,19 @@ import type { EntityId } from './ecs/types';
         : packABGR(80, 80, 100, 200);
       batcher.draw(whiteTexture, 10 + s * 14, 8, 10, 10, 0, 0, 0, 1, 1, dotColor);
     }
-    // Entity count bar (proportional)
-    var entityRatio = Math.min(loadedEntityIds.length / 200, 1);
-    batcher.draw(whiteTexture, 80, 10, canvasWidth - 90, 6, 0, 0, 0, 1, 1, packABGR(40, 40, 60, 200));
-    batcher.draw(whiteTexture, 80, 10, (canvasWidth - 90) * entityRatio, 6, 0, 0, 0, 1, 1, packABGR(170, 68, 255, 200));
-    // Sprite count bar
+    // Entity count / sprite count bars
     var sprCount = 0;
+    var enabledCount = 0;
     for (var i = 0; i < loadedEntityIds.length; i++) {
+      var meta = loadedMetaByEntity.get(loadedEntityIds[i]);
+      if (meta && meta.enabled === false) continue;
+      enabledCount++;
       if (world.hasComponent(loadedEntityIds[i], spriteId)) sprCount++;
     }
-    var sprRatio = loadedEntityIds.length > 0 ? sprCount / loadedEntityIds.length : 0;
+    var entityRatio = Math.min(enabledCount / 200, 1);
+    var sprRatio = enabledCount > 0 ? sprCount / enabledCount : 0;
+    batcher.draw(whiteTexture, 80, 10, canvasWidth - 90, 6, 0, 0, 0, 1, 1, packABGR(40, 40, 60, 200));
+    batcher.draw(whiteTexture, 80, 10, (canvasWidth - 90) * entityRatio, 6, 0, 0, 0, 1, 1, packABGR(170, 68, 255, 200));
     batcher.draw(whiteTexture, 80, 20, canvasWidth - 90, 6, 0, 0, 0, 1, 1, packABGR(40, 40, 60, 200));
     batcher.draw(whiteTexture, 80, 20, (canvasWidth - 90) * sprRatio, 6, 0, 0, 0, 1, 1, packABGR(68, 255, 136, 200));
     batcher.end();

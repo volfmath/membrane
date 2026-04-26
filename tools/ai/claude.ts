@@ -1,6 +1,7 @@
 import type { AIConnectorConfig, AIResponse, GeneratedScene } from './types.js';
 import type { CanonicalEntity, CanonicalEvent } from '../../src/canonical/types.js';
 import type { ProjectManifest } from '../mcp/project-data.js';
+import { extractJson } from './json-extract.js';
 
 const SCENE_SYSTEM_PROMPT = `You are a game scene generator for the Membrane engine. You produce JSON output conforming to the canonical format.
 
@@ -143,11 +144,11 @@ async function callClaude<T>(
 
   try {
     const text = raw.data!;
-    const jsonMatch = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-    if (!jsonMatch) {
+    const jsonStr = extractJson(text);
+    if (!jsonStr) {
       return { ok: false, error: 'No JSON found in response', usage: raw.usage };
     }
-    const parsed = JSON.parse(jsonMatch[0]) as T;
+    const parsed = JSON.parse(jsonStr) as T;
     return { ok: true, data: parsed, usage: raw.usage };
   } catch (e: any) {
     return { ok: false, error: `JSON parse error: ${e.message}`, usage: raw.usage };

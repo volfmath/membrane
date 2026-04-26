@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { World } from '../../src/ecs/world';
 import { EntityManager } from '../../src/ecs/entity-manager';
+import { StorageType } from '../../src/ecs/component-registry';
 import { BundleWriter } from '../../src/asset/bundle-writer';
 import { BundleReader } from '../../src/asset/bundle-reader';
 import { AssetType } from '../../src/asset/bundle-format';
@@ -27,6 +28,10 @@ const CAMERA_SCHEMA = {
   size: { type: Float32Array, default: 320 },
   near: { type: Float32Array, default: 1 },
   far: { type: Float32Array, default: 2000 },
+};
+
+const HIT_SCHEMA = {
+  damage: { type: Float32Array, default: 0 },
 };
 
 const LOADER_CONFIG: SceneLoaderConfig = {
@@ -100,6 +105,38 @@ describe('loadSceneData', () => {
     expect(result.idMap.has('cam')).toBe(true);
     expect(result.idMap.has('player')).toBe(true);
     expect(result.idMap.has('enemy')).toBe(true);
+  });
+
+  it('preserves parent and enabled metadata', () => {
+    const sceneWithHierarchy: CompiledSceneData = {
+      sceneId: 'hierarchy',
+      entities: [
+        {
+          id: 'root',
+          name: 'Root',
+          parent: null,
+          enabled: true,
+          components: { Transform: { x: 0, y: 0 } },
+        },
+        {
+          id: 'child',
+          name: 'Child',
+          parent: 'root',
+          enabled: false,
+          components: { Transform: { x: 10, y: 20 } },
+        },
+      ],
+    };
+
+    const result = loadSceneData(sceneWithHierarchy, world, LOADER_CONFIG);
+    const rootId = result.idMap.get('root')!;
+    const childId = result.idMap.get('child')!;
+    const childMeta = result.metaByEntity.get(childId)!;
+
+    expect(result.metaByEntity.get(rootId)?.parentEntityId).toBeNull();
+    expect(childMeta.parentSourceId).toBe('root');
+    expect(childMeta.parentEntityId).toBe(rootId);
+    expect(childMeta.enabled).toBe(false);
   });
 
   it('entities are alive in the world', () => {
@@ -198,6 +235,79 @@ describe('loadSceneData', () => {
 
     const orderField = world.storage.getField(spriteId, 'order');
     expect(orderField[e1Index]).toBe(5);
+  });
+
+  it('accepts boolean field values for numeric component storage', () => {
+    const sceneWithBooleans: CompiledSceneData = {
+      sceneId: 'bools',
+      entities: [{
+        id: 'e1',
+        name: 'Bool Sprite',
+        parent: null,
+        enabled: true,
+        components: {
+          Sprite: { order: 3, flipX: true, flipY: false, visible: true },
+        },
+      }],
+    };
+
+    const result = loadSceneData(sceneWithBooleans, world, LOADER_CONFIG);
+    const spriteId = world.registry.getId('Sprite');
+    const e1Index = EntityManager.getIndex(result.entityIds[0]);
+
+    const flipXField = world.storage.getField(spriteId, 'flipX');
+    const flipYField = world.storage.getField(spriteId, 'flipY');
+    const visibleField = world.storage.getField(spriteId, 'visible');
+
+    expect(flipXField[e1Index]).toBe(1);
+    expect(flipYField[e1Index]).toBe(0);
+    expect(visibleField[e1Index]).toBe(1);
+  });
+
+  it('writes SparseSet component fields using dense indices', () => {
+    const sparseWorld = createTestWorld();
+    sparseWorld.registry.register('Hit', HIT_SCHEMA, StorageType.SparseSet);
+    const hitId = sparseWorld.registry.getId('Hit');
+
+    const sparseConfig: SceneLoaderConfig = {
+      componentFieldMap: new Map([
+        ['Transform', ['x', 'y', 'rotation', 'scaleX', 'scaleY']],
+        ['Sprite', ['order', 'flipX', 'flipY', 'visible']],
+        ['Camera', ['size', 'near', 'far']],
+        ['Hit', ['damage']],
+      ]),
+    };
+
+    const sparseScene: CompiledSceneData = {
+      sceneId: 'sparse',
+      entities: [
+        {
+          id: 'plain',
+          name: 'Plain',
+          parent: null,
+          enabled: true,
+          components: { Transform: { x: 0, y: 0 } },
+        },
+        {
+          id: 'enemy',
+          name: 'Enemy',
+          parent: null,
+          enabled: true,
+          components: { Hit: { damage: 7 } },
+        },
+      ],
+    };
+
+    const result = loadSceneData(sparseScene, sparseWorld, sparseConfig);
+    const enemyId = result.idMap.get('enemy')!;
+    const enemyIndex = EntityManager.getIndex(enemyId);
+    const damageField = sparseWorld.storage.getField(hitId, 'damage') as Float32Array;
+    const dense = sparseWorld.storage.getSparseSetDense(hitId)!;
+    const denseIndex = sparseWorld.storage.getFieldIndex(enemyIndex, hitId);
+
+    expect(dense.count).toBe(1);
+    expect(dense.dense[denseIndex]).toBe(enemyIndex);
+    expect(damageField[denseIndex]).toBe(7);
   });
 
   it('handles empty scene', () => {

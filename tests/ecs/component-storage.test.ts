@@ -271,4 +271,17 @@ describe('ComponentStorage — clearEntity and reset', () => {
     expect(storage.hasComponent(5, hiddenId)).toBe(false);
     expect(storage.currentTick).toBe(0);
   });
+
+  it('clearEntity resets change detection ticks', () => {
+    const { storage, transformId } = setup();
+    storage.advanceTick();
+    storage.addComponent(0, transformId);
+    storage.markChanged(0, transformId);
+    const tickBefore = storage.currentTick;
+
+    storage.clearEntity(0);
+
+    expect(storage.isChanged(0, transformId, 0)).toBe(false);
+    expect(storage.isAdded(0, transformId, 0)).toBe(false);
+  });
 });

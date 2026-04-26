@@ -1,6 +1,7 @@
 import type { AIConnectorConfig, AIResponse, LocalizedContent } from './types.js';
 import type { CanonicalSceneFile } from '../../src/canonical/types.js';
 import { _callClaudeRaw } from './claude.js';
+import { extractJson } from './json-extract.js';
 
 const TRANSLATE_SYSTEM = `You are a game content translator. Translate game text accurately while preserving game-specific terminology.
 
@@ -42,11 +43,11 @@ export async function translateContent(
 
   try {
     const text = raw.data!;
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) {
+    const jsonStr = extractJson(text);
+    if (!jsonStr) {
       return { ok: false, error: 'No JSON array found in response', usage: raw.usage };
     }
-    const parsed = JSON.parse(jsonMatch[0]) as LocalizedContent[];
+    const parsed = JSON.parse(jsonStr) as LocalizedContent[];
     return { ok: true, data: parsed, usage: raw.usage };
   } catch (e: any) {
     return { ok: false, error: `JSON parse error: ${e.message}`, usage: raw.usage };

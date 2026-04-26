@@ -157,17 +157,23 @@ async function executeStep(
 
 function topoSort(steps: WorkflowStep[]): WorkflowStep[] {
   const visited = new Set<string>();
+  const inStack = new Set<string>();
   const result: WorkflowStep[] = [];
   const stepMap = new Map(steps.map(s => [s.id, s]));
 
   function visit(id: string): void {
     if (visited.has(id)) return;
-    visited.add(id);
+    if (inStack.has(id)) {
+      throw new Error(`Cyclic dependency detected: "${id}"`);
+    }
+    inStack.add(id);
     const step = stepMap.get(id);
     if (!step) return;
     for (const dep of step.dependsOn ?? []) {
       visit(dep);
     }
+    inStack.delete(id);
+    visited.add(id);
     result.push(step);
   }
 

@@ -266,8 +266,8 @@ import type { EntityId } from './ecs/types';
                  : packABGR(255, 123, 123, 255);
 
     batcher.begin(projMatrix);
-    batcher.draw(whiteTexture, 0, 0, canvasWidth, 4, 0, 0, 0, 1, 1, packABGR(20, 20, 30, 200));
-    batcher.draw(whiteTexture, 0, 0, barW, 4, 0, 0, 0, 1, 1, barColor);
+    batcher.draw(whiteTexture, 0, 0, canvasWidth, 8, 0, 0, 0, 1, 1, packABGR(20, 20, 30, 200));
+    batcher.draw(whiteTexture, 0, 0, barW, 8, 0, 0, 0, 1, 1, barColor);
     batcher.end();
 
     if (state.frameCount === 1 || state.frameCount % 120 === 0) {

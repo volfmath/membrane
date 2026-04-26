@@ -268,4 +268,55 @@ describe('World', () => {
     const q2 = world.query();
     expect(q1).not.toBe(q2);
   });
+
+  it('addComponent on dead entity is a no-op', () => {
+    const world = new World({ maxEntities: 16 });
+    const tId = world.registry.register('Transform', TransformSchema);
+    const e = world.createEntity();
+    world.destroyEntity(e);
+    world.addComponent(e, tId);
+    const idx = EntityManager.getIndex(e);
+    expect(world.storage.hasComponent(idx, tId)).toBe(false);
+  });
+
+  it('removeComponent on dead entity is a no-op', () => {
+    const world = new World({ maxEntities: 16 });
+    const tId = world.registry.register('Transform', TransformSchema);
+    const e = world.createEntity();
+    world.addComponent(e, tId);
+    world.destroyEntity(e);
+    expect(() => world.removeComponent(e, tId)).not.toThrow();
+  });
+
+  it('hasComponent on dead entity returns false', () => {
+    const world = new World({ maxEntities: 16 });
+    const tId = world.registry.register('Transform', TransformSchema);
+    const e = world.createEntity();
+    world.addComponent(e, tId);
+    world.destroyEntity(e);
+    expect(world.hasComponent(e, tId)).toBe(false);
+  });
+});
+
+describe('Scheduler — highWaterMark optimization', () => {
+  it('only scans up to highWaterMark, not full capacity', () => {
+    const world = new World({ maxEntities: 1024 });
+    const tId = world.registry.register('Transform', TransformSchema);
+
+    const e1 = world.createEntity();
+    const e2 = world.createEntity();
+    world.addComponent(e1, tId);
+    world.addComponent(e2, tId);
+
+    let matchCount = 0;
+    const query = new ArchetypeQueryBuilder().with(tId).build();
+    const sys = makeSystem('Counter', SystemPhase.Update, query, (_w, _dt, _ents, count) => {
+      matchCount = count;
+    });
+    world.addSystem(sys);
+    world.update(0.016);
+
+    expect(matchCount).toBe(2);
+    expect(world.entities.highWaterMark).toBe(2);
+  });
 });

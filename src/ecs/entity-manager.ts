@@ -39,6 +39,10 @@ export class EntityManager {
     return this._capacity;
   }
 
+  get highWaterMark(): number {
+    return this.nextNewIndex;
+  }
+
   create(): EntityId {
     let index: number;
     if (this.freeCount > 0) {

@@ -49,6 +49,7 @@ export class World {
   }
 
   addComponent(id: EntityId, componentId: ComponentId): this {
+    if (!this.entities.isAlive(id)) return this;
     const index = EntityManager.getIndex(id);
     this.storage.ensureComponent(componentId);
     this.storage.addComponent(index, componentId);
@@ -56,11 +57,13 @@ export class World {
   }
 
   removeComponent(id: EntityId, componentId: ComponentId): void {
+    if (!this.entities.isAlive(id)) return;
     const index = EntityManager.getIndex(id);
     this.storage.removeComponent(index, componentId);
   }
 
   hasComponent(id: EntityId, componentId: ComponentId): boolean {
+    if (!this.entities.isAlive(id)) return false;
     const index = EntityManager.getIndex(id);
     return this.storage.hasComponent(index, componentId);
   }

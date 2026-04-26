@@ -218,6 +218,10 @@ export function createMembraneServer(projectRoot: string): McpServer {
       }
       const scene = result.data;
       if (sceneId) scene.sceneId = sceneId;
+      const existing = manager.getScene(scene.sceneId);
+      if (existing) {
+        return { content: [{ type: 'text', text: `Error: Scene "${scene.sceneId}" already exists. Pass a different sceneId or delete the existing scene first.` }], isError: true };
+      }
       manager.createScene(scene.sceneId, scene.name);
       for (const entity of scene.entities) {
         manager.createEntity(scene.sceneId, entity);

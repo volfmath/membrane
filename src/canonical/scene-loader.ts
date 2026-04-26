@@ -1,15 +1,23 @@
 import { BundleReader } from '../asset/bundle-reader.js';
 import { World } from '../ecs/world.js';
-import type { ComponentId } from '../ecs/component-registry.js';
 import { EntityManager } from '../ecs/entity-manager.js';
 import type { EntityId } from '../ecs/types.js';
-import type { CompiledSceneData, CompiledEntity } from './loader-types.js';
+import type { CompiledSceneData } from './loader-types.js';
+
+export interface LoadedEntityMeta {
+  sourceId: string;
+  name: string;
+  parentSourceId: string | null;
+  parentEntityId: EntityId | null;
+  enabled: boolean;
+}
 
 export interface LoadedScene {
   sceneId: string;
   entityCount: number;
   entityIds: EntityId[];
   idMap: Map<string, EntityId>;
+  metaByEntity: Map<EntityId, LoadedEntityMeta>;
 }
 
 export interface SceneLoaderConfig {
@@ -36,12 +44,26 @@ export function loadSceneData(
 ): LoadedScene {
   const entityIds: EntityId[] = [];
   const idMap = new Map<string, EntityId>();
+  const metaByEntity = new Map<EntityId, LoadedEntityMeta>();
 
   for (const compiled of sceneData.entities) {
     const entityId = world.createEntity();
-    const entityIndex = EntityManager.getIndex(entityId);
     entityIds.push(entityId);
     idMap.set(compiled.id, entityId);
+  }
+
+  for (let i = 0; i < sceneData.entities.length; i++) {
+    const compiled = sceneData.entities[i];
+    const entityId = entityIds[i];
+    const entityIndex = EntityManager.getIndex(entityId);
+
+    metaByEntity.set(entityId, {
+      sourceId: compiled.id,
+      name: compiled.name,
+      parentSourceId: compiled.parent,
+      parentEntityId: compiled.parent ? (idMap.get(compiled.parent) ?? null) : null,
+      enabled: compiled.enabled,
+    });
 
     for (const [compName, compData] of Object.entries(compiled.components)) {
       const componentId = world.registry.getId(compName);
@@ -54,11 +76,12 @@ export function loadSceneData(
 
       for (const fieldName of fieldNames) {
         const value = (compData as Record<string, unknown>)[fieldName];
-        if (value === undefined || value === null) continue;
-        if (typeof value !== 'number') continue;
+        const numericValue = normalizeFieldValue(value);
+        if (numericValue === null) continue;
 
         const field = world.storage.getField(componentId, fieldName);
-        field[entityIndex] = value;
+        const fieldIndex = world.storage.getFieldIndex(entityIndex, componentId);
+        field[fieldIndex] = numericValue;
       }
 
       world.storage.markChanged(entityIndex, componentId);
@@ -70,5 +93,18 @@ export function loadSceneData(
     entityCount: entityIds.length,
     entityIds,
     idMap,
+    metaByEntity,
   };
+}
+
+function normalizeFieldValue(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 1 : 0;
+  }
+
+  return null;
 }

@@ -42,14 +42,9 @@ export interface CompileResult {
   bundles: Map<string, ArrayBuffer>;
 }
 
-let nextAssetId = 1;
-
-function allocateAssetId(): number {
-  return nextAssetId++;
-}
-
-function resetAssetIdCounter(): void {
-  nextAssetId = 1;
+function createAssetIdAllocator(): () => number {
+  let nextId = 1;
+  return () => nextId++;
 }
 
 export interface CompiledSceneData {
@@ -89,7 +84,7 @@ function compileScene(scene: CanonicalSceneFile): { data: Uint8Array; compiled: 
 export function compileCanonicalDir(opts: CompileOptions): CompileResult {
   const { input, output } = opts;
 
-  resetAssetIdCounter();
+  const allocateAssetId = createAssetIdAllocator();
 
   const assetsPath = resolve(input, 'assets.json');
   let assetsFile: CanonicalAssetsFile | null = null;

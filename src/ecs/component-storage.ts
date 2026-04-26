@@ -190,6 +190,7 @@ export class ComponentStorage {
   }
 
   getField(componentId: ComponentId, fieldName: string): TypedArray {
+    this.ensureComponent(componentId);
     const storageType = this.registry.getStorageType(componentId);
     if (storageType === StorageType.Table) {
       return this.tableFields.get(componentId)!.get(fieldName)!;
@@ -197,7 +198,22 @@ export class ComponentStorage {
     return this.sparseSets.get(componentId)!.fields.get(fieldName)!;
   }
 
+  getFieldIndex(entityIndex: number, componentId: ComponentId): number {
+    const storageType = this.registry.getStorageType(componentId);
+    if (storageType === StorageType.Table) {
+      return entityIndex;
+    }
+
+    const ss = this.sparseSets.get(componentId)!;
+    const denseIdx = ss.sparse[entityIndex];
+    if (denseIdx === SPARSE_INVALID) {
+      throw new Error(`Entity ${entityIndex} does not have component ${componentId}`);
+    }
+    return denseIdx;
+  }
+
   getFields(componentId: ComponentId): Record<string, TypedArray> {
+    this.ensureComponent(componentId);
     const storageType = this.registry.getStorageType(componentId);
     const result: Record<string, TypedArray> = {};
     if (storageType === StorageType.Table) {
@@ -244,6 +260,9 @@ export class ComponentStorage {
       }
     }
     this.archetypes[entityIndex] = 0n;
+
+    for (const [, ticks] of this.changedTicks) ticks[entityIndex] = 0;
+    for (const [, ticks] of this.addedTicks) ticks[entityIndex] = 0;
   }
 
   reset(): void {

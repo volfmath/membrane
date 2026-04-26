@@ -92,6 +92,15 @@ describe('Orchestrator', () => {
     expect(result.steps[0].status).toBe('ok');
   });
 
+  it('detects cyclic dependencies', async () => {
+    const steps = [
+      { id: 'a', connector: 'claude' as const, action: 'generateScene', input: { prompt: 'test' }, dependsOn: ['b'] },
+      { id: 'b', connector: 'claude' as const, action: 'generateScene', input: { prompt: 'test' }, dependsOn: ['a'] },
+    ];
+
+    await expect(runWorkflow(steps, CONFIGS)).rejects.toThrow('Cyclic dependency');
+  });
+
   it('handles topological ordering', async () => {
     fetchSpy = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response(JSON.stringify(PERPLEXITY_GDD_RESPONSE), { status: 200 }))
