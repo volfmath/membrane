@@ -51,7 +51,9 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
   // ─── 3D Shaders ───────────────────────────────────────────────────────────
   // vertex: pos+norm+uv → clip space; fragment: Lambertian body + atlas-sampled face
   const VERT_3D = `attribute vec3 a_pos;attribute vec3 a_norm;attribute vec2 a_uv;uniform mat4 u_mvp;varying mediump vec3 v_norm;varying mediump vec2 v_uv;void main(){gl_Position=u_mvp*vec4(a_pos,1.0);v_norm=a_norm;v_uv=a_uv;}`;
-  const FRAG_3D = `precision mediump float;varying vec3 v_norm;varying vec2 v_uv;uniform sampler2D u_tex;uniform vec4 u_uv_rect;uniform float u_dim;void main(){vec3 L=normalize(vec3(0.3,1.0,0.5));float ndl=max(0.0,dot(normalize(v_norm),L));float isFace=step(0.0005,v_uv.x+v_uv.y);vec4 col;if(isFace>0.5){vec2 auv=u_uv_rect.xy+v_uv*(u_uv_rect.zw-u_uv_rect.xy);col=texture2D(u_tex,auv);}else{float lit=0.3+0.7*ndl;col=vec4(vec3(0.92,0.87,0.72)*lit,1.0);}gl_FragColor=vec4(col.rgb*u_dim,col.a);}`;
+  // Light direction derived from Cocos scene: DirectionalLight euler(-60, 45, 0)
+  // forward=(0,0,-1) rotY=45→(-0.707,0,-0.707) rotX=-60→(-0.707,0.612,-0.354); negate→ toward-light
+  const FRAG_3D = `precision mediump float;varying vec3 v_norm;varying vec2 v_uv;uniform sampler2D u_tex;uniform vec4 u_uv_rect;uniform float u_dim;void main(){vec3 L=normalize(vec3(0.707,-0.612,0.354));float ndl=max(0.0,dot(normalize(v_norm),L));float isFace=step(0.0005,v_uv.x+v_uv.y);vec4 col;if(isFace>0.5){vec2 auv=u_uv_rect.xy+v_uv*(u_uv_rect.zw-u_uv_rect.xy);col=texture2D(u_tex,auv);}else{float lit=0.25+0.75*ndl;col=vec4(vec3(0.92,0.87,0.72)*lit,1.0);}gl_FragColor=vec4(col.rgb*u_dim,col.a);}`;
 
   // ─── 3D Renderer State ────────────────────────────────────────────────────
   let prog3d: WebGLProgram | null = null;
@@ -90,9 +92,12 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
 
   // ─── 3D Setup ─────────────────────────────────────────────────────────────
   function computeVP(): void {
-    const fovH = 20 * Math.PI / 180;
-    const fovY = 2 * Math.atan(Math.tan(fovH * 0.5) / (W / H));
-    camera3d.setLookAt([0, 35, 45], [0, 5, 0], [0, 1, 0]);
+    // Cam3D world pos: parent Camera at (0,0,4) rotX=-90, child local (0,0,70)
+    // rotX=-90: local(0,0,70) → world(0,70,0); total eye = (0,70,4)
+    // Camera looks down -Y; up vector = (0,0,-1) (Cocos +Z = back in rotated frame)
+    // FOV=20° vertical (from Cocos cc.Camera._fov)
+    const fovY = 20 * Math.PI / 180;
+    camera3d.setLookAt([0, 70, 4], [0, 0, 0], [0, 0, -1]);
     camera3d.setPerspective(fovY, W / H, 1, 1000);
   }
 
