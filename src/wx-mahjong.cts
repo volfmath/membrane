@@ -558,28 +558,47 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
   // ─── 3D Grid Helpers ──────────────────────────────────────────────────────
   interface GridPos { col: number; row: number; layer: number; }
 
+  function layoutNoise(col: number, row: number, layer: number, salt: number): number {
+    const v = Math.sin(col * 12.9898 + row * 78.233 + layer * 37.719 + salt * 19.17) * 43758.5453;
+    return v - Math.floor(v);
+  }
+
   function tileWorldPos(col: number, row: number, layer: number): { twx: number; twy: number; twz: number } {
+    const cx = (GRID_COLS - 1) * 0.5;
+    const cz = (GRID_ROWS - 1) * 0.5;
+    const baseX = (col - cx) * TSPACE_X;
+    const baseZ = (row - cz) * TSPACE_Z;
+    const spread = Math.max(0.5, 1 - layer * 0.09);
+    const jitterX = (layoutNoise(col, row, layer, 1) - 0.5) * (0.65 + layer * 0.1);
+    const jitterZ = (layoutNoise(col, row, layer, 2) - 0.5) * (0.85 + layer * 0.12);
     return {
-      twx: (col - (GRID_COLS - 1) * 0.5) * TSPACE_X,
-      twy:  layer * TSPACE_Y,
-      twz: (row - (GRID_ROWS - 1) * 0.5) * TSPACE_Z,
+      twx: baseX * spread + jitterX,
+      twy: layer * (TSPACE_Y * 0.94),
+      twz: baseZ * spread + jitterZ,
     };
   }
 
   function generateStackedLayout(count: number): GridPos[] {
     const result: GridPos[] = [];
     const occupied = new Set<string>();
+    const cx = (GRID_COLS - 1) * 0.5;
+    const cz = (GRID_ROWS - 1) * 0.5;
     let l = 0;
     while (result.length < count && l < 12) {
       const valid: GridPos[] = [];
       for (let r = 0; r < GRID_ROWS; r++) {
         for (let c = 0; c < GRID_COLS; c++) {
           if (l === 0 || occupied.has(`${c},${r},${l-1}`)) {
-            if (!occupied.has(`${c},${r},${l}`)) valid.push({ col:c, row:r, layer:l });
+            if (!occupied.has(`${c},${r},${l}`)) valid.push({ col: c, row: r, layer: l });
           }
         }
       }
-      for (const p of shuffle(valid)) {
+      valid.sort((a, b) => {
+        const da = Math.hypot(a.col - cx, a.row - cz) + layoutNoise(a.col, a.row, a.layer, 3) * 0.35;
+        const db = Math.hypot(b.col - cx, b.row - cz) + layoutNoise(b.col, b.row, b.layer, 3) * 0.35;
+        return da - db;
+      });
+      for (const p of valid) {
         if (result.length >= count) break;
         result.push(p);
         occupied.add(`${p.col},${p.row},${p.layer}`);

@@ -2278,7 +2278,7 @@ var TILE_INDICES = new Uint16Array([
   const GRAY = packABGR(71, 85, 105, 255);
   const SLOT_BG = packABGR(30, 41, 59, 255);
   const VERT_3D = `attribute vec3 a_pos;attribute vec3 a_norm;attribute vec2 a_uv;uniform mat4 u_mvp;varying mediump vec3 v_norm;varying mediump vec2 v_uv;void main(){gl_Position=u_mvp*vec4(a_pos,1.0);v_norm=a_norm;v_uv=a_uv;}`;
-  const FRAG_3D = `precision mediump float;varying vec3 v_norm;varying vec2 v_uv;uniform sampler2D u_tex;uniform vec4 u_uv_rect;uniform float u_dim;void main(){vec3 L=normalize(vec3(0.3,1.0,0.5));float ndl=max(0.0,dot(normalize(v_norm),L));float isFace=step(0.0005,v_uv.x+v_uv.y);vec4 col;if(isFace>0.5){vec2 auv=u_uv_rect.xy+v_uv*(u_uv_rect.zw-u_uv_rect.xy);col=texture2D(u_tex,auv);}else{float lit=0.3+0.7*ndl;col=vec4(vec3(0.92,0.87,0.72)*lit,1.0);}gl_FragColor=vec4(col.rgb*u_dim,col.a);}`;
+  const FRAG_3D = `precision mediump float;varying vec3 v_norm;varying vec2 v_uv;uniform sampler2D u_tex;uniform vec4 u_uv_rect;uniform float u_dim;void main(){vec3 L=normalize(vec3(0.707,-0.612,0.354));float ndl=max(0.0,dot(normalize(v_norm),L));float isFace=step(0.0005,v_uv.x+v_uv.y);vec4 col;if(isFace>0.5){vec2 auv=u_uv_rect.xy+v_uv*(u_uv_rect.zw-u_uv_rect.xy);col=texture2D(u_tex,auv);}else{float lit=0.25+0.75*ndl;col=vec4(vec3(0.92,0.87,0.72)*lit,1.0);}gl_FragColor=vec4(col.rgb*u_dim,col.a);}`;
   let prog3d = null;
   let tileMesh = null;
   let camera3d = new Camera3D();
@@ -2305,9 +2305,8 @@ var TILE_INDICES = new Uint16Array([
   let spriteFrameMap = {};
   const spriteTexCache = /* @__PURE__ */ new Map();
   function computeVP() {
-    const fovH = 20 * Math.PI / 180;
-    const fovY = 2 * Math.atan(Math.tan(fovH * 0.5) / (W / H2));
-    camera3d.setLookAt([0, 35, 45], [0, 5, 0], [0, 1, 0]);
+    const fovY = 20 * Math.PI / 180;
+    camera3d.setLookAt([0, 70, 4], [0, 0, 0], [0, 0, -1]);
     camera3d.setPerspective(fovY, W / H2, 1, 1e3);
   }
   function setup3D() {
@@ -2461,7 +2460,7 @@ var TILE_INDICES = new Uint16Array([
     } catch (e) {
     }
   }
-  let scene = "home";
+  let scene = "loading";
   let currentLevel = 1;
   let cfg;
   let worldTiles = [];
@@ -2475,6 +2474,8 @@ var TILE_INDICES = new Uint16Array([
   let fixtureScenes = [];
   let homeScene = null;
   let loadingScene = null;
+  let mainGameScene = null;
+  let loadingProgress = 0.12;
   const props = { xiPai: 1, yiChu: 1, xiaochu: 1, shiZhong: 1 };
   function loadFixtureScenes() {
     var _a, _b;
@@ -2485,7 +2486,8 @@ var TILE_INDICES = new Uint16Array([
       spriteFrameMap = (_a = fixture == null ? void 0 : fixture.spriteFrames) != null ? _a : {};
       homeScene = buildRuntimeSceneView("Home");
       loadingScene = buildRuntimeSceneView("Loading");
-      log("fixture scenes", fixtureScenes.length, "sprites=", Object.keys(spriteFrameMap).length, "home=", !!homeScene, "loading=", !!loadingScene);
+      mainGameScene = buildRuntimeSceneView("MainGame");
+      log("fixture scenes", fixtureScenes.length, "sprites=", Object.keys(spriteFrameMap).length, "home=", !!homeScene, "loading=", !!loadingScene, "game=", !!mainGameScene);
     } catch (e) {
       warn("fixture load failed", (_b = e == null ? void 0 : e.message) != null ? _b : e);
       fixtureData = null;
@@ -2493,6 +2495,7 @@ var TILE_INDICES = new Uint16Array([
       spriteFrameMap = {};
       homeScene = null;
       loadingScene = null;
+      mainGameScene = null;
     }
   }
   function buildRuntimeSceneView(sceneId) {
@@ -2501,36 +2504,102 @@ var TILE_INDICES = new Uint16Array([
     if (!raw) return null;
     const entities = raw.entities;
     const byName = /* @__PURE__ */ new Map();
+    const byPath = /* @__PURE__ */ new Map();
     for (const entity of entities) {
       const list = (_a = byName.get(entity.name)) != null ? _a : [];
       list.push(entity);
       byName.set(entity.name, list);
+      const path = entity.parent ? `${entity.parent}/${entity.name}` : entity.name;
+      byPath.set(path, entity);
     }
-    return { sceneId, entities, byName };
+    return { sceneId, entities, byName, byPath };
   }
   function getSceneEntities(view, name) {
     var _a;
     return (_a = view == null ? void 0 : view.byName.get(name)) != null ? _a : [];
   }
+  function getScenePathEntity(view, path) {
+    var _a;
+    return (_a = view == null ? void 0 : view.byPath.get(path)) != null ? _a : null;
+  }
+  function getVisibleScenePathEntity(view, path) {
+    const entity = getScenePathEntity(view, path);
+    return entity && isSceneEntityVisible(view, entity) ? entity : null;
+  }
   function getSceneEntity(view, name) {
+    var _a;
     const list = getSceneEntities(view, name);
-    return list.length > 0 ? list[0] : null;
+    return (_a = list.find((entity) => isSceneEntityVisible(view, entity))) != null ? _a : null;
+  }
+  function getSceneWorldTransform(view, entity) {
+    if (!view || !entity) return { x: 0, y: 0 };
+    let x = getTransformNumber(entity, "x");
+    let y = getTransformNumber(entity, "y");
+    let parentPath = entity.parent;
+    while (parentPath) {
+      const parent = getScenePathEntity(view, parentPath);
+      if (!parent) break;
+      x += getTransformNumber(parent, "x");
+      y += getTransformNumber(parent, "y");
+      parentPath = parent.parent;
+    }
+    return { x, y };
   }
   function getTransformNumber(entity, key, fallback = 0) {
     var _a, _b;
     const value = (_b = (_a = entity == null ? void 0 : entity.components) == null ? void 0 : _a.Transform) == null ? void 0 : _b[key];
     return typeof value === "number" ? value : fallback;
   }
+  function isSceneEntityVisible(view, entity) {
+    if (!view || !entity) return false;
+    if (entity.enabled === false) return false;
+    let parentPath = entity.parent;
+    while (parentPath) {
+      const parent = getScenePathEntity(view, parentPath);
+      if (!parent) break;
+      if (parent.enabled === false) return false;
+      parentPath = parent.parent;
+    }
+    return true;
+  }
+  function getSceneSize(entity) {
+    return {
+      width: getTransformNumber(entity, "width"),
+      height: getTransformNumber(entity, "height")
+    };
+  }
+  function uiSizeToScreenWidth(width) {
+    return width / UI_DESIGN_W * W;
+  }
+  function uiSizeToScreenHeight(height) {
+    return height / UI_DESIGN_H * H2;
+  }
+  function getSceneScreenSize(entity) {
+    const size = getSceneSize(entity);
+    return {
+      width: uiSizeToScreenWidth(size.width),
+      height: uiSizeToScreenHeight(size.height)
+    };
+  }
+  function getSceneButtonRect(entity, fallbackWidth, fallbackHeight) {
+    const size = getSceneScreenSize(entity);
+    return {
+      width: size.width || fallbackWidth,
+      height: size.height || fallbackHeight
+    };
+  }
   function getLabelText(entity, fallback = "") {
     var _a, _b;
     const value = (_b = (_a = entity == null ? void 0 : entity.components) == null ? void 0 : _a.Label) == null ? void 0 : _b.text;
     return typeof value === "string" ? value : fallback;
   }
+  const UI_DESIGN_W = 720;
+  const UI_DESIGN_H = 1280;
   function uiToScreenX(x) {
-    return W * 0.5 + x;
+    return x / UI_DESIGN_W * W;
   }
   function uiToScreenY(y) {
-    return H2 * 0.5 - y;
+    return (UI_DESIGN_H - y) / UI_DESIGN_H * H2;
   }
   function parseHexColor(hex, fallback) {
     if (!hex || !/^#[0-9A-Fa-f]{8}$/.test(hex)) return fallback;
@@ -2553,8 +2622,11 @@ var TILE_INDICES = new Uint16Array([
     try {
       const img = wx.createImage();
       const tex = device.createTexture();
+      const loaded = { texture: tex, width: 1, height: 1 };
       img.onload = () => {
         const gl = device.gl;
+        loaded.width = img.width || 1;
+        loaded.height = img.height || 1;
         gl.bindTexture(gl.TEXTURE_2D, tex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -2567,8 +2639,8 @@ var TILE_INDICES = new Uint16Array([
         return warn("sprite image err", imagePath, (_a = e == null ? void 0 : e.errMsg) != null ? _a : e);
       };
       img.src = imagePath;
-      spriteTexCache.set(imagePath, tex);
-      return tex;
+      spriteTexCache.set(imagePath, loaded);
+      return loaded;
     } catch (e) {
       warn("sprite texture fail", imagePath, e);
       spriteTexCache.set(imagePath, null);
@@ -2580,12 +2652,52 @@ var TILE_INDICES = new Uint16Array([
     if (!entity) return;
     const frame = getSpriteFrame(entity);
     if (!frame) return;
-    const tex = ensureSpriteTexture(frame.image);
-    if (!tex) return;
-    const w = (_a = opts == null ? void 0 : opts.width) != null ? _a : frame.originalSize.width;
-    const h = (_b = opts == null ? void 0 : opts.height) != null ? _b : frame.originalSize.height;
+    const loaded = ensureSpriteTexture(frame.image);
+    if (!loaded) return;
+    const scaleX = Math.abs(getTransformNumber(entity, "scaleX", 1)) || 1;
+    const scaleY = Math.abs(getTransformNumber(entity, "scaleY", 1)) || 1;
+    const size = getSceneScreenSize(entity);
+    const importedWidth = size.width > 0 ? size.width * scaleX : 0;
+    const importedHeight = size.height > 0 ? size.height * scaleY : 0;
+    const w = (_a = opts == null ? void 0 : opts.width) != null ? _a : importedWidth || frame.originalSize.width * scaleX;
+    const h = (_b = opts == null ? void 0 : opts.height) != null ? _b : importedHeight || frame.originalSize.height * scaleY;
     const tint = (_d = opts == null ? void 0 : opts.tint) != null ? _d : parseHexColor((_c = entity.components.Sprite) == null ? void 0 : _c.color, WHITE);
-    batcher.draw(tex, x - w * 0.5, y - h * 0.5, w, h, 0, 0, 0, 1, 1, tint);
+    const texW = Math.max(1, loaded.width);
+    const texH = Math.max(1, loaded.height);
+    const u0 = frame.rect.x / texW;
+    const v0 = frame.rect.y / texH;
+    const u1 = (frame.rect.x + frame.rect.width) / texW;
+    const v1 = (frame.rect.y + frame.rect.height) / texH;
+    batcher.draw(loaded.texture, x - w * 0.5, y - h * 0.5, w, h, 0, u0, v0, u1, v1, tint);
+  }
+  function drawSceneEntitySprite(view, name, opts) {
+    const entity = getSceneEntity(view, name);
+    if (!entity || !isSceneEntityVisible(view, entity)) return;
+    const pos = getSceneWorldTransform(view, entity);
+    const rawX = pos.x || (opts == null ? void 0 : opts.fallbackX) || 0;
+    const rawY = pos.y || (opts == null ? void 0 : opts.fallbackY) || 0;
+    drawSceneSprite(
+      entity,
+      uiToScreenX(rawX),
+      uiToScreenY(rawY),
+      opts
+    );
+  }
+  function getChildSceneEntity(view, parentSuffix, name) {
+    var _a;
+    return (_a = getSceneEntities(view, name).find((entity) => {
+      var _a2;
+      return ((_a2 = entity.parent) == null ? void 0 : _a2.endsWith(parentSuffix)) && isSceneEntityVisible(view, entity);
+    })) != null ? _a : null;
+  }
+  function drawSceneText(text, cx, cy, w, h, size, color = WHITE) {
+    drawLabel(makeTextTex(text, Math.max(32, Math.ceil(w)), Math.max(20, Math.ceil(h)), size), cx, cy, w, h, color);
+  }
+  function formatTimerLabel(sec) {
+    const total = Math.max(0, Math.floor(sec));
+    const min = Math.floor(total / 60);
+    const remain = total % 60;
+    return `${String(min).padStart(2, "0")}:${String(remain).padStart(2, "0")}`;
   }
   function saveLevel() {
     try {
@@ -2606,22 +2718,45 @@ var TILE_INDICES = new Uint16Array([
   const SLOT_H = 90;
   const SLOT_Y = () => H2 - SLOT_H + 10;
   const PLAY_BOT = () => H2 - SLOT_H;
-  function slotTargetX(i) {
-    return W / (MAX_SLOT + 1) * (i + 1);
+  function getSlotAnchor(i) {
+    var _a;
+    const tileFrames = getSceneEntities(mainGameScene, "TileIn");
+    const frame = (_a = tileFrames[i]) != null ? _a : null;
+    if (frame) {
+      const pos = getSceneWorldTransform(mainGameScene, frame);
+      return { x: uiToScreenX(pos.x), y: uiToScreenY(pos.y) };
+    }
+    return { x: W / (MAX_SLOT + 1) * (i + 1), y: SLOT_Y() + TILE_H / 2 };
   }
-  function slotTargetY() {
-    return SLOT_Y() + TILE_H / 2;
+  function slotTargetX(i) {
+    return getSlotAnchor(i).x;
+  }
+  function slotTargetY(i = 0) {
+    return getSlotAnchor(i).y;
+  }
+  function layoutNoise(col, row, layer, salt) {
+    const v = Math.sin(col * 12.9898 + row * 78.233 + layer * 37.719 + salt * 19.17) * 43758.5453;
+    return v - Math.floor(v);
   }
   function tileWorldPos(col, row, layer) {
+    const cx = (GRID_COLS - 1) * 0.5;
+    const cz = (GRID_ROWS - 1) * 0.5;
+    const baseX = (col - cx) * TSPACE_X;
+    const baseZ = (row - cz) * TSPACE_Z;
+    const spread = Math.max(0.5, 1 - layer * 0.09);
+    const jitterX = (layoutNoise(col, row, layer, 1) - 0.5) * (0.65 + layer * 0.1);
+    const jitterZ = (layoutNoise(col, row, layer, 2) - 0.5) * (0.85 + layer * 0.12);
     return {
-      twx: (col - (GRID_COLS - 1) * 0.5) * TSPACE_X,
-      twy: layer * TSPACE_Y,
-      twz: (row - (GRID_ROWS - 1) * 0.5) * TSPACE_Z
+      twx: baseX * spread + jitterX,
+      twy: layer * (TSPACE_Y * 0.94),
+      twz: baseZ * spread + jitterZ
     };
   }
   function generateStackedLayout(count) {
     const result = [];
     const occupied = /* @__PURE__ */ new Set();
+    const cx = (GRID_COLS - 1) * 0.5;
+    const cz = (GRID_ROWS - 1) * 0.5;
     let l = 0;
     while (result.length < count && l < 12) {
       const valid = [];
@@ -2632,7 +2767,12 @@ var TILE_INDICES = new Uint16Array([
           }
         }
       }
-      for (const p of shuffle(valid)) {
+      valid.sort((a, b) => {
+        const da = Math.hypot(a.col - cx, a.row - cz) + layoutNoise(a.col, a.row, a.layer, 3) * 0.35;
+        const db = Math.hypot(b.col - cx, b.row - cz) + layoutNoise(b.col, b.row, b.layer, 3) * 0.35;
+        return da - db;
+      });
+      for (const p of valid) {
         if (result.length >= count) break;
         result.push(p);
         occupied.add(`${p.col},${p.row},${p.layer}`);
@@ -2705,7 +2845,7 @@ var TILE_INDICES = new Uint16Array([
       x: fromX,
       y: fromY,
       tx: slotTargetX(pos),
-      ty: slotTargetY(),
+      ty: slotTargetY(pos),
       animating: true,
       animT: 0,
       removing: false,
@@ -2713,7 +2853,7 @@ var TILE_INDICES = new Uint16Array([
     });
     for (let i = 0; i < slotTiles.length; i++) {
       slotTiles[i].tx = slotTargetX(i);
-      slotTiles[i].ty = slotTargetY();
+      slotTiles[i].ty = slotTargetY(i);
     }
     return true;
   }
@@ -2740,6 +2880,7 @@ var TILE_INDICES = new Uint16Array([
       slotTiles = slotTiles.filter((t) => !t.removing);
       for (let i = 0; i < slotTiles.length; i++) {
         slotTiles[i].tx = slotTargetX(i);
+        slotTiles[i].ty = slotTargetY(i);
         slotTiles[i].animating = true;
       }
       checkWin();
@@ -2806,6 +2947,7 @@ var TILE_INDICES = new Uint16Array([
     const returned = slotTiles.splice(0, slotTiles.length);
     for (let i = 0; i < slotTiles.length; i++) {
       slotTiles[i].tx = slotTargetX(i);
+      slotTiles[i].ty = slotTargetY(i);
       slotTiles[i].animating = true;
     }
     const stackTop = {};
@@ -2897,16 +3039,28 @@ var TILE_INDICES = new Uint16Array([
     { key: "xiaochu", label: "\u6D88\u9664", x: 2 },
     { key: "shiZhong", label: "+\u65F6\u95F4", x: 3 }
   ];
-  function propBtnX(i) {
-    return 4 + i * (PROP_BTN_W + 4);
+  function propBtnAnchor(i) {
+    const names = ["b1", "b3", "b4", "b2"];
+    const entity = getSceneEntity(mainGameScene, names[i]);
+    if (entity) {
+      const pos = getSceneWorldTransform(mainGameScene, entity);
+      return {
+        x: uiToScreenX(pos.x),
+        y: uiToScreenY(pos.y)
+      };
+    }
+    return { x: 30 + PROP_BTN_W * 0.5 + i * 92, y: H2 - SLOT_H - PROP_BTN_H - 22 };
   }
-  function propBtnY() {
-    return H2 - SLOT_H - PROP_BTN_H - 4;
+  function propBtnX(i) {
+    return propBtnAnchor(i).x - PROP_BTN_W * 0.5;
+  }
+  function propBtnY(i = 0) {
+    return propBtnAnchor(i).y - PROP_BTN_H * 0.5;
   }
   function hitTestPropBtn(tx, ty) {
-    const by = propBtnY();
     for (let i = 0; i < PROP_BTNS.length; i++) {
       const bx = propBtnX(i);
+      const by = propBtnY(i);
       if (tx >= bx && tx <= bx + PROP_BTN_W && ty >= by && ty <= by + PROP_BTN_H) return PROP_BTNS[i].key;
     }
     return null;
@@ -3125,7 +3279,9 @@ var TILE_INDICES = new Uint16Array([
     device.setViewport(0, 0, W, H2);
     device.clear(0.06, 0.09, 0.16, 1);
     uiButtons = [];
-    if (scene === "home") {
+    if (scene === "loading") {
+      renderLoading();
+    } else if (scene === "home") {
       renderHome();
     } else if (scene === "game") {
       renderGame(dt);
@@ -3136,98 +3292,219 @@ var TILE_INDICES = new Uint16Array([
     }
     requestFrame(render);
   }
+  function renderLoading() {
+    batcher.begin(proj);
+    drawRect(0, 0, W, H2, packABGR(8, 15, 30, 255));
+    drawSceneSprite(getSceneEntity(loadingScene, "mjbg.png"), W * 0.5, H2 * 0.5, { width: W, height: H2 });
+    drawSceneEntitySprite(loadingScene, "4a2996d24d5de3a7489e8fbcec34cb3", { fallbackY: 343.25199999999995 });
+    const progressRoot = getSceneEntity(loadingScene, "ProgressBar");
+    const progressX = uiToScreenX(getTransformNumber(progressRoot, "x"));
+    const progressY = uiToScreenY(getTransformNumber(progressRoot, "y", -491.172));
+    drawSceneSprite(progressRoot, progressX, progressY);
+    const fillW = Math.max(16, Math.round(292 * loadingProgress));
+    drawSceneEntitySprite(loadingScene, "Bar", { width: fillW, height: 16, fallbackX: -300.972, fallbackY: -500.329 });
+    drawSceneText(`${Math.round(loadingProgress * 100)}%`, progressX, progressY - 28, 72, 22, 16, WHITE);
+    const legal = getSceneEntity(loadingScene, "\u62B5\u5236\u4E0D\u826F\u6E38\u620F\uFF0C\u62D2\u7EDD\u76D7\u7248\u6E38\u620F\u3002      \u6CE8\u610F\u81EA\u6211\u4FDD\u62A4\uFF0C\u8C28\u9632\u53D7\u9A97\u4E0A\u5F53\u3002       \u9002\u5EA6\u6E38\u620F\u76CA\u8111\uFF0C\u6C89\u8FF7\u6E38\u620F\u4F24\u8EAB\u3002      \u5408\u7406");
+    drawSceneText(getLabelText(legal, "\u5065\u5EB7\u6E38\u620F\u63D0\u793A"), W * 0.5, H2 - 42, W - 48, 18, 10, packABGR(226, 232, 240, 220));
+    drawSceneText("8+", W * 0.5, H2 - 22, 24, 18, 12, packABGR(251, 191, 36, 255));
+    batcher.end();
+  }
   function renderHome() {
-    var _a;
     batcher.begin(proj);
     drawRect(0, 0, W, H2, packABGR(8, 15, 30, 255));
     drawSceneSprite(getSceneEntity(homeScene, "mjbg.png"), W * 0.5, H2 * 0.5, { width: W, height: H2 });
-    drawSceneSprite(getSceneEntity(homeScene, "Logo"), W * 0.5, 112, { width: 170, height: 74 });
-    const sideSpriteNames = ["btnMission", "btnLuckilyBox", "btnSaveGold", "btnGameClub", "btnRank", "btnInvateFriend"];
+    drawSceneEntitySprite(homeScene, "Logo", { fallbackY: 293.905 });
+    drawSceneEntitySprite(homeScene, "btnSetting", { fallbackX: -291.454, fallbackY: 512.71 });
+    const sideSpriteNames = ["btnMission", "btnLuckilyBox", "btnSaveGold", "btnDailyChallenge", "btnGameClub", "btnRank", "btnInvateFriend"];
     for (const name of sideSpriteNames) {
       const entity = getSceneEntity(homeScene, name);
       if (!entity) continue;
-      drawSceneSprite(entity, uiToScreenX(getTransformNumber(entity, "x")), uiToScreenY(getTransformNumber(entity, "y")), { width: 84, height: 84 });
+      const pos = getSceneWorldTransform(homeScene, entity);
+      drawSceneSprite(entity, uiToScreenX(pos.x), uiToScreenY(pos.y));
     }
-    drawSceneSprite(getSceneEntity(homeScene, "btnPropShop"), 48, H2 - 110, { width: 82, height: 82 });
-    drawSceneSprite(getSceneEntity(homeScene, "btnShare"), W - 48, H2 - 110, { width: 82, height: 82 });
-    const topBar = getSceneEntity(homeScene, "Top");
-    const topY = uiToScreenY(getTransformNumber(topBar, "y", 640));
-    drawRect(0, 0, W, Math.max(88, topY + 120), packABGR(16, 35, 85, 160));
-    const sampleIds = [1, 11, 21, 31, 41, 51, 61, 71];
-    const contentLeft = 72;
-    const contentRight = W - 72;
-    const tileAreaW = contentRight - contentLeft;
-    const cols = 4;
-    const gap = 10;
-    const tileScale = Math.min(1.05, (tileAreaW - gap * (cols - 1)) / (cols * TILE_W));
-    const tw = TILE_W * tileScale;
-    const th = TILE_H * tileScale;
-    const gridW = cols * tw + (cols - 1) * gap;
-    const ox = contentLeft + (tileAreaW - gridW) * 0.5 + tw * 0.5;
-    const oy = 146 + th * 0.5;
-    for (let i = 0; i < sampleIds.length; i++) {
-      const col = i % cols;
-      const row = i / cols | 0;
-      const x = ox + col * (tw + gap);
-      const y = oy + row * (th + gap);
-      drawRect(x - tw / 2 + TILE_SHADOW, y - th / 2 + TILE_SHADOW, tw, th, SHADOW);
-      drawTile(sampleIds[i], x, y, 1, 0, tileScale);
+    const dailyDot = getChildSceneEntity(homeScene, "/btnDailyChallenge", "\u7EA2\u70B9");
+    if (dailyDot) {
+      const pos = getSceneWorldTransform(homeScene, dailyDot);
+      drawSceneSprite(dailyDot, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    const goldRoot = getVisibleScenePathEntity(homeScene, "Canvas/GoldNum");
+    const fatigueRoot = getVisibleScenePathEntity(homeScene, "Canvas/FatigueNum");
+    const goldFrame = getChildSceneEntity(homeScene, "/GoldNum", "\u4F53\u529B\u91D1\u5E01\u6846");
+    const goldIcon = getChildSceneEntity(homeScene, "/GoldNum", "\u91D1\u5E01");
+    const goldAdd = getChildSceneEntity(homeScene, "/GoldNum", "btnGoldAdd");
+    const goldLabel = getChildSceneEntity(homeScene, "/GoldNum", "goldNumLabel");
+    const fatigueFrame = getChildSceneEntity(homeScene, "/FatigueNum", "\u4F53\u529B\u91D1\u5E01\u6846");
+    const fatigueIcon = getChildSceneEntity(homeScene, "/FatigueNum", "\u91D1\u5E01");
+    const fatigueAdd = getChildSceneEntity(homeScene, "/FatigueNum", "btnFatigueAdd");
+    const fatigueLabel = getChildSceneEntity(homeScene, "/FatigueNum", "ftNumLabel");
+    if (goldRoot) {
+      const rootPos = getSceneWorldTransform(homeScene, goldRoot);
+      drawSceneSprite(goldFrame, uiToScreenX(rootPos.x), uiToScreenY(rootPos.y));
+      if (goldIcon) {
+        const pos = getSceneWorldTransform(homeScene, goldIcon);
+        drawSceneSprite(goldIcon, uiToScreenX(pos.x), uiToScreenY(pos.y));
+      }
+      if (goldAdd) {
+        const pos = getSceneWorldTransform(homeScene, goldAdd);
+        drawSceneSprite(goldAdd, uiToScreenX(pos.x), uiToScreenY(pos.y));
+      }
+      if (goldLabel) {
+        const pos = getSceneWorldTransform(homeScene, goldLabel);
+        drawSceneText(getLabelText(goldLabel, "0"), uiToScreenX(pos.x), uiToScreenY(pos.y), 36, 18, 14, WHITE);
+      }
+    }
+    if (fatigueRoot) {
+      const rootPos = getSceneWorldTransform(homeScene, fatigueRoot);
+      drawSceneSprite(fatigueFrame, uiToScreenX(rootPos.x), uiToScreenY(rootPos.y));
+      if (fatigueIcon) {
+        const pos = getSceneWorldTransform(homeScene, fatigueIcon);
+        drawSceneSprite(fatigueIcon, uiToScreenX(pos.x), uiToScreenY(pos.y));
+      }
+      if (fatigueAdd) {
+        const pos = getSceneWorldTransform(homeScene, fatigueAdd);
+        drawSceneSprite(fatigueAdd, uiToScreenX(pos.x), uiToScreenY(pos.y));
+      }
+      if (fatigueLabel) {
+        const pos = getSceneWorldTransform(homeScene, fatigueLabel);
+        drawSceneText(getLabelText(fatigueLabel, "0"), uiToScreenX(pos.x), uiToScreenY(pos.y), 36, 18, 14, WHITE);
+      }
     }
     const starChest = getSceneEntity(homeScene, "btnHomeBoxStar");
+    const starChestLeft = getChildSceneEntity(homeScene, "/btnHomeBoxStar", "\u661F\u661F\u5B9D\u7BB1-2");
+    const starChestMain = getChildSceneEntity(homeScene, "/btnHomeBoxStar", "\u661F\u661F\u5B9D\u7BB1");
+    const starProgress = getChildSceneEntity(homeScene, "/btnHomeBoxStar", "\u8FDB\u5EA6\u68462");
+    const starTips = getChildSceneEntity(homeScene, "/btnHomeBoxStar", "tips");
+    const starNum = getChildSceneEntity(homeScene, "/btnHomeBoxStar", "starNum");
     const levelChest = getSceneEntity(homeScene, "btnHomeBoxLevel");
-    const starNum = getSceneEntity(homeScene, "starNum");
-    const levelNum = getSceneEntity(homeScene, "levelNum");
-    drawSceneSprite(starChest, W * 0.5, uiToScreenY(getTransformNumber(starChest, "y", -16.12)), { width: 220, height: 92 });
-    drawSceneSprite(levelChest, W * 0.5, uiToScreenY(getTransformNumber(levelChest, "y", -170)), { width: 220, height: 92 });
-    drawLabel(makeTextTex(getLabelText(starNum, "0/500"), 100, 28, 18), W * 0.5 + 32, uiToScreenY(getTransformNumber(starChest, "y", -16.12)) + 10, 76, 20, WHITE);
-    drawLabel(makeTextTex(getLabelText(levelNum, `0/${currentLevel}`), 100, 28, 18), W * 0.5 + 32, uiToScreenY(getTransformNumber(levelChest, "y", -170)) + 10, 76, 20, WHITE);
-    const goldRoot = getSceneEntity(homeScene, "GoldNum");
-    const ftRoot = getSceneEntity(homeScene, "FatigueNum");
-    const btnGoldAdd = getSceneEntity(homeScene, "btnGoldAdd");
-    const btnFatigueAdd = getSceneEntity(homeScene, "btnFatigueAdd");
-    const goldNum = getSceneEntity(homeScene, "goldNumLabel");
-    const ftNum = getSceneEntity(homeScene, "ftNumLabel");
-    const goldX = uiToScreenX(getTransformNumber(goldRoot, "x", -133.002));
-    const goldY = uiToScreenY(getTransformNumber(goldRoot, "y", 513.23));
-    const ftX = uiToScreenX(getTransformNumber(ftRoot, "x", 72.349));
-    const ftY = uiToScreenY(getTransformNumber(ftRoot, "y", 513.23));
-    drawRect(goldX - 58, goldY - 18, 116, 36, packABGR(18, 36, 88, 220));
-    drawSceneSprite(btnGoldAdd, goldX + 44, goldY, { width: 26, height: 26 });
-    drawLabel(makeTextTex(getLabelText(goldNum, "0"), 60, 24, 18), goldX - 6, goldY, 40, 18, WHITE);
-    drawRect(ftX - 58, ftY - 18, 116, 36, packABGR(18, 36, 88, 220));
-    drawSceneSprite(btnFatigueAdd, ftX + 44, ftY, { width: 26, height: 26 });
-    drawLabel(makeTextTex(getLabelText(ftNum, "0"), 60, 24, 18), ftX - 6, ftY, 40, 18, WHITE);
+    const levelChestLeft = getChildSceneEntity(homeScene, "/btnHomeBoxLevel", "\u5173\u5361\u5B9D\u7BB1-2");
+    const levelChestMain = getChildSceneEntity(homeScene, "/btnHomeBoxLevel", "\u5173\u5361\u5B9D\u7BB1");
+    const levelProgress = getChildSceneEntity(homeScene, "/btnHomeBoxLevel", "\u8FDB\u5EA6\u68461");
+    const levelTips = getChildSceneEntity(homeScene, "/btnHomeBoxLevel", "tips");
+    const levelNum = getChildSceneEntity(homeScene, "/btnHomeBoxLevel", "levelNum");
+    for (const entity of [starChest, levelChest]) {
+      if (!entity) continue;
+      const pos = getSceneWorldTransform(homeScene, entity);
+      drawSceneSprite(entity, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    for (const entity of [starChestLeft, starChestMain, levelChestLeft, levelChestMain]) {
+      if (!entity) continue;
+      const pos = getSceneWorldTransform(homeScene, entity);
+      drawSceneSprite(entity, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    for (const entity of [starProgress, levelProgress]) {
+      if (!entity) continue;
+      const pos = getSceneWorldTransform(homeScene, entity);
+      drawSceneSprite(entity, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    for (const entity of [starTips, levelTips]) {
+      if (!entity) continue;
+      const pos = getSceneWorldTransform(homeScene, entity);
+      drawSceneSprite(entity, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    const starItem1Icon = getVisibleScenePathEntity(homeScene, "Canvas/btnHomeBoxStar/tips/Node-001/starItem1/Sprite");
+    const starItem1Label = getVisibleScenePathEntity(homeScene, "Canvas/btnHomeBoxStar/tips/Node-001/starItem1/Label");
+    const starItem2Icon = getVisibleScenePathEntity(homeScene, "Canvas/btnHomeBoxStar/tips/Node-001/starItem2/Sprite");
+    const starItem2Label = getVisibleScenePathEntity(homeScene, "Canvas/btnHomeBoxStar/tips/Node-001/starItem2/Label");
+    const levelItem1Icon = getVisibleScenePathEntity(homeScene, "Canvas/btnHomeBoxLevel/tips/Node/levelItem1/Sprite");
+    const levelItem1Label = getVisibleScenePathEntity(homeScene, "Canvas/btnHomeBoxLevel/tips/Node/levelItem1/Label");
+    const levelItem2Icon = getVisibleScenePathEntity(homeScene, "Canvas/btnHomeBoxLevel/tips/Node/levelItem2/Sprite");
+    const levelItem2Label = getVisibleScenePathEntity(homeScene, "Canvas/btnHomeBoxLevel/tips/Node/levelItem2/Label");
+    for (const entity of [starItem1Icon, starItem2Icon, levelItem1Icon, levelItem2Icon]) {
+      if (!entity) continue;
+      const pos = getSceneWorldTransform(homeScene, entity);
+      drawSceneSprite(entity, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    for (const entity of [starItem1Label, starItem2Label, levelItem1Label, levelItem2Label]) {
+      if (!entity) continue;
+      const pos = getSceneWorldTransform(homeScene, entity);
+      drawSceneText(getLabelText(entity, "100"), uiToScreenX(pos.x), uiToScreenY(pos.y), 20, 12, 10, packABGR(32, 32, 32, 255));
+    }
+    if (starNum) {
+      const pos = getSceneWorldTransform(homeScene, starNum);
+      drawSceneText(getLabelText(starNum, "0/500"), uiToScreenX(pos.x), uiToScreenY(pos.y), 70, 16, 12, WHITE);
+    }
+    if (levelNum) {
+      const pos = getSceneWorldTransform(homeScene, levelNum);
+      drawSceneText(`0/${currentLevel}`, uiToScreenX(pos.x), uiToScreenY(pos.y), 70, 16, 12, WHITE);
+    }
+    drawSceneEntitySprite(homeScene, "btnPropShop", { fallbackX: -305.913, fallbackY: -489.43 });
+    drawSceneEntitySprite(homeScene, "btnShare", { fallbackX: 312.626, fallbackY: -488.216 });
+    const shopLabel = getChildSceneEntity(homeScene, "/btnPropShop", "SHANGDIANa");
+    const shareLabel = getChildSceneEntity(homeScene, "/btnShare", "\u5206\u4EAB");
+    if (shopLabel) {
+      const pos = getSceneWorldTransform(homeScene, shopLabel);
+      drawSceneText(getLabelText(shopLabel, "\u5546\u5E97"), uiToScreenX(pos.x), uiToScreenY(pos.y), 40, 18, 14, WHITE);
+    }
+    if (shareLabel) {
+      const pos = getSceneWorldTransform(homeScene, shareLabel);
+      drawSceneText(getLabelText(shareLabel, "\u5206\u4EAB"), uiToScreenX(pos.x), uiToScreenY(pos.y), 40, 18, 14, WHITE);
+    }
     const startRoot = getSceneEntity(homeScene, "btnStartMainGame");
-    const levelShow = getSceneEntity(homeScene, "LevelShow");
-    const startBtnSprite = getSceneEntity(homeScene, "Btn");
-    const startTextNode = (_a = getSceneEntities(homeScene, "txt").find((entity) => {
-      var _a2;
-      return (_a2 = entity.parent) == null ? void 0 : _a2.endsWith("/Btn/txt");
-    })) != null ? _a : null;
-    const startSubTextNode = getSceneEntity(homeScene, "txt-001");
-    const startCenterX = uiToScreenX(getTransformNumber(startRoot, "x"));
-    const startCenterY = uiToScreenY(getTransformNumber(startRoot, "y", -370.17));
-    const startBtn = { x: startCenterX - 104, y: startCenterY - 34, w: 208, h: 68, id: "start" };
+    const levelShow = getChildSceneEntity(homeScene, "/btnStartMainGame", "LevelShow");
+    const levelShowLabel = getChildSceneEntity(homeScene, "/btnStartMainGame/LevelShow", "Label");
+    const startBtnSprite = getChildSceneEntity(homeScene, "/btnStartMainGame", "Btn");
+    const startTextNode = getChildSceneEntity(homeScene, "/btnStartMainGame/Btn", "txt");
+    const startSubTextNode = getChildSceneEntity(homeScene, "/btnStartMainGame/Btn/txt", "txt-001");
+    const shareTag = getChildSceneEntity(homeScene, "/btnStartMainGame/Btn", "shareTag");
+    const shipinTag = getChildSceneEntity(homeScene, "/btnStartMainGame/Btn", "shipinTag2");
+    const startPos = getSceneWorldTransform(homeScene, startRoot);
+    const startCenterX = uiToScreenX(startPos.x);
+    const startCenterY = uiToScreenY(startPos.y || -370.17);
+    const startBtnSize = getSceneButtonRect(startBtnSprite, 208, 68);
+    const startBtn = { x: startCenterX - startBtnSize.width * 0.5, y: startCenterY - startBtnSize.height * 0.5, w: startBtnSize.width, h: startBtnSize.height, id: "start" };
     uiButtons.push(startBtn);
-    drawSceneSprite(levelShow, startCenterX, startCenterY - 72, { width: 150, height: 50 });
-    drawLabel(makeTextTex(`\u7B2C${currentLevel}\u5173`, 90, 26, 18), startCenterX, startCenterY - 72, 76, 20, packABGR(32, 32, 32, 255));
-    drawSceneSprite(startBtnSprite, startCenterX, startCenterY + 8, { width: 188, height: 54 });
-    drawLabel(makeTextTex(getLabelText(startTextNode, "\u5F00\u59CB\u6E38\u620F"), 140, 34, 22), startCenterX, startCenterY + 18, 110, 26, WHITE);
-    drawLabel(makeTextTex(getLabelText(startSubTextNode, "\u4ECA\u65E5\u6B21\u6570\uFF083/3\uFF09"), 170, 26, 14), startCenterX, startCenterY - 6, 130, 18, WHITE);
+    if (levelShow) {
+      const pos = getSceneWorldTransform(homeScene, levelShow);
+      drawSceneSprite(levelShow, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    if (levelShowLabel) {
+      const pos = getSceneWorldTransform(homeScene, levelShowLabel);
+      drawSceneText(`\u7B2C${currentLevel}\u5173`, uiToScreenX(pos.x), uiToScreenY(pos.y), 76, 18, 14, packABGR(32, 32, 32, 255));
+    }
+    if (startBtnSprite) {
+      const pos = getSceneWorldTransform(homeScene, startBtnSprite);
+      drawSceneSprite(startBtnSprite, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    if (shareTag) {
+      const pos = getSceneWorldTransform(homeScene, shareTag);
+      drawSceneSprite(shareTag, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    if (shipinTag) {
+      const pos = getSceneWorldTransform(homeScene, shipinTag);
+      drawSceneSprite(shipinTag, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    if (startTextNode) {
+      const pos = getSceneWorldTransform(homeScene, startTextNode);
+      drawSceneText(getLabelText(startTextNode, "\u5F00\u59CB\u6E38\u620F"), uiToScreenX(pos.x), uiToScreenY(pos.y), 110, 24, 18, WHITE);
+    }
+    if (startSubTextNode) {
+      const pos = getSceneWorldTransform(homeScene, startSubTextNode);
+      drawSceneText(getLabelText(startSubTextNode, "\u4ECA\u65E5\u6B21\u6570\uFF083/3\uFF09"), uiToScreenX(pos.x), uiToScreenY(pos.y), 130, 18, 12, WHITE);
+    }
     drawNumber(Math.round(fps), W - 24, 18, 14, GRAY);
     batcher.end();
   }
   function renderGame(_dt) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
     renderWorldTiles3D();
     batcher.begin(proj);
     const playBot = PLAY_BOT();
+    const bottomRoot = getSceneEntity(mainGameScene, "bottom");
+    const bottomY = uiToScreenY(getTransformNumber(bottomRoot, "y", -582));
     drawRect(0, playBot, W, SLOT_H, SLOT_BG);
     drawRect(0, playBot, W, 2, packABGR(71, 85, 105, 255));
     for (let i = 0; i < MAX_SLOT; i++) {
+      const frame = (_a = getSceneEntities(mainGameScene, "TileIn")[i]) != null ? _a : null;
       const sx = slotTargetX(i) - TILE_W / 2;
-      const sy = slotTargetY() - TILE_H / 2;
-      drawRect(sx - 2, sy - 2, TILE_W + 4, TILE_H + 4, packABGR(51, 65, 85, 255));
-      drawRect(sx, sy, TILE_W, TILE_H, packABGR(24, 34, 52, 255));
+      const sy = slotTargetY(i) - TILE_H / 2;
+      if (frame) {
+        drawSceneSprite(frame, slotTargetX(i), slotTargetY(i));
+        const ring0 = (_b = getVisibleScenePathEntity(mainGameScene, `Canvas/select/TileIn${i === 0 ? "" : `:${i}`}/e${i}/ring0`)) != null ? _b : getVisibleScenePathEntity(mainGameScene, `Canvas/select/TileIn/e${i}/ring0`);
+        if (ring0) drawSceneSprite(ring0, slotTargetX(i), slotTargetY(i), { tint: packABGR(180, 190, 210, 120) });
+      } else {
+        drawRect(sx - 2, sy - 2, TILE_W + 4, TILE_H + 4, packABGR(51, 65, 85, 255));
+        drawRect(sx, sy, TILE_W, TILE_H, packABGR(24, 34, 52, 255));
+      }
     }
     for (const t of slotTiles) {
       const alpha = t.removing ? 1 - t.removeT : 1;
@@ -3241,80 +3518,142 @@ var TILE_INDICES = new Uint16Array([
       );
       drawTile(t.id, t.x, t.y, alpha, 0, scale);
     }
-    const pby = propBtnY();
+    drawRect(0, bottomY - 54, W, 108, packABGR(5, 10, 18, 220));
     for (let i = 0; i < PROP_BTNS.length; i++) {
-      const pb = PROP_BTNS[i];
-      const pbx = propBtnX(i);
-      const count = props[pb.key];
-      const color = count > 0 ? packABGR(37, 99, 235, 255) : GRAY;
-      drawRect(pbx, pby, PROP_BTN_W, PROP_BTN_H, color);
-      const ic = packABGR(255, 255, 255, count > 0 ? 230 : 110);
-      drawLabel(lblProp[i], pbx + PROP_BTN_W / 2, pby + PROP_BTN_H * 0.62, PROP_BTN_W - 2, 19, ic);
-      if (count > 0) drawNumber(count, pbx + PROP_BTN_W - 8, pby + 5, 13, YELLOW);
+      const buttonName = ["b1", "b3", "b4", "b2"][i];
+      const buttonEntity = getSceneEntity(mainGameScene, buttonName);
+      const iconEntity = getChildSceneEntity(mainGameScene, `/bottom/${buttonName}`, "Icon");
+      const labelEntity = getChildSceneEntity(mainGameScene, `/bottom/${buttonName}`, "Label");
+      const counterFrame = getChildSceneEntity(mainGameScene, `/bottom/${buttonName}`, "\u9053\u5177\u8BA1\u6570\u6846");
+      const counterLabel = getChildSceneEntity(mainGameScene, `/bottom/${buttonName}`, `PropNum${i + 1}`);
+      const anchor = propBtnAnchor(i);
+      const count = props[PROP_BTNS[i].key];
+      const tint = count > 0 ? WHITE : packABGR(140, 148, 163, 190);
+      drawSceneSprite(buttonEntity, anchor.x, anchor.y, { tint });
+      drawSceneSprite(iconEntity, anchor.x - 40, anchor.y + 10, { tint });
+      drawSceneText(getLabelText(labelEntity, PROP_BTNS[i].label), anchor.x + 22, anchor.y + 10, 44, 18, 14, WHITE);
+      drawSceneSprite(counterFrame, anchor.x + 34, anchor.y + 24);
+      const addEntity = getChildSceneEntity(mainGameScene, `/bottom/${buttonName}`, `add${i + 1}`);
+      if (addEntity) drawSceneSprite(addEntity, anchor.x + 35, anchor.y + 24);
+      drawSceneText(String(count), anchor.x + 34, anchor.y + 24, 20, 16, 12, YELLOW);
     }
-    drawRect(0, 0, W, HUD_H, packABGR(15, 23, 42, 255));
-    drawRect(0, HUD_H - 2, W, 2, packABGR(30, 58, 138, 255));
-    const timerColor = timerSec > 30 ? WHITE : timerSec > 10 ? YELLOW : RED;
-    drawNumber(timerSec, W / 2, HUD_H / 2, 28, timerColor);
+    drawRect(0, 0, W, HUD_H + 8, packABGR(10, 18, 34, 210));
+    drawSceneEntitySprite(mainGameScene, "btnMainGamePause", { fallbackX: -293, fallbackY: 510 });
+    drawSceneEntitySprite(mainGameScene, "LevelTimer", { fallbackY: 509.3395 });
+    const levelLabel = (_c = getVisibleScenePathEntity(mainGameScene, "Canvas/LevelTimer/Node/curretLevelLabel")) != null ? _c : getSceneEntity(mainGameScene, "curretLevelLabel");
+    const timerNum = (_d = getVisibleScenePathEntity(mainGameScene, "Canvas/LevelTimer/Node/timer/TimerNum")) != null ? _d : getSceneEntity(mainGameScene, "TimerNum");
+    const remainLabel = (_e = getVisibleScenePathEntity(mainGameScene, "Canvas/LevelTimer/remain")) != null ? _e : getSceneEntity(mainGameScene, "remain");
+    const startIcon = (_f = getVisibleScenePathEntity(mainGameScene, "Canvas/Start/StartIcon")) != null ? _f : getSceneEntity(mainGameScene, "StartIcon");
+    const startNum = (_g = getVisibleScenePathEntity(mainGameScene, "Canvas/Start/StartNum")) != null ? _g : getSceneEntity(mainGameScene, "StartNum");
+    const tipButton = (_h = getVisibleScenePathEntity(mainGameScene, "Canvas/tipNode/yellow_button11")) != null ? _h : getSceneEntity(mainGameScene, "yellow_button11");
+    const tipText = (_i = getVisibleScenePathEntity(mainGameScene, "Canvas/tipNode/txt")) != null ? _i : getSceneEntity(mainGameScene, "txt");
+    const tipFinger = (_j = getVisibleScenePathEntity(mainGameScene, "Canvas/tipNode/figer")) != null ? _j : getSceneEntity(mainGameScene, "figer");
+    const timerCenterX = W * 0.5;
+    const timerCenterY = 36;
+    const levelLabelPos = getSceneWorldTransform(mainGameScene, levelLabel);
+    const timerNumPos = getSceneWorldTransform(mainGameScene, timerNum);
+    const remainLabelPos = getSceneWorldTransform(mainGameScene, remainLabel);
+    drawSceneText(`\u7B2C${currentLevel}\u5173`, uiToScreenX(levelLabelPos.x), uiToScreenY(levelLabelPos.y), 60, 18, 14, WHITE);
+    drawSceneText(formatTimerLabel(timerSec), uiToScreenX(timerNumPos.x), uiToScreenY(timerNumPos.y), 72, 22, 18, timerSec > 30 ? WHITE : timerSec > 10 ? YELLOW : RED);
+    const remainCount = worldTiles.length;
+    drawSceneText(`\u5269\u4F59\uFF1A${remainCount}`, uiToScreenX(remainLabelPos.x), uiToScreenY(remainLabelPos.y), 84, 18, 12, packABGR(226, 232, 240, 255));
     const timerRatio = cfg ? timerSec / cfg.Time : 1;
     const barColor = timerSec > 30 ? GREEN : timerSec > 10 ? YELLOW : RED;
-    drawRect(0, HUD_H - 6, W, 4, packABGR(30, 41, 59, 255));
-    drawRect(0, HUD_H - 6, Math.round(W * timerRatio), 4, barColor);
-    drawNumber(currentLevel, 30, HUD_H / 2, 20, packABGR(148, 163, 184, 255));
-    const prog2 = totalGroups > 0 ? matchedGroups / totalGroups : 0;
-    drawRect(W - 54, 8, 50, 16, packABGR(30, 41, 59, 255));
-    drawRect(W - 54, 8, Math.round(50 * prog2), 16, GREEN);
+    drawRect(timerCenterX - 86, 62, 172, 4, packABGR(30, 41, 59, 255));
+    drawRect(timerCenterX - 86, 62, Math.round(172 * timerRatio), 4, barColor);
+    const startIconPos = getSceneWorldTransform(mainGameScene, startIcon);
+    const startNumPos = getSceneWorldTransform(mainGameScene, startNum);
+    drawSceneSprite(startIcon, uiToScreenX(startIconPos.x), uiToScreenY(startIconPos.y));
+    drawSceneText(String(Math.max(0, totalGroups - matchedGroups)), uiToScreenX(startNumPos.x), uiToScreenY(startNumPos.y), 24, 18, 12, YELLOW);
+    if (slotTiles.length === 0 && !gameEnded && tipButton && tipText && tipFinger) {
+      const buttonPos = getSceneWorldTransform(mainGameScene, tipButton);
+      const textPos = getSceneWorldTransform(mainGameScene, tipText);
+      const fingerPos = getSceneWorldTransform(mainGameScene, tipFinger);
+      drawSceneSprite(tipButton, uiToScreenX(buttonPos.x), uiToScreenY(buttonPos.y));
+      drawSceneText(getLabelText(tipText, "\u70B9\u51FB\u4E09\u5F20\u76F8\u540C\u7684\u724C\u8FDB\u884C\u6D88\u9664"), uiToScreenX(textPos.x), uiToScreenY(textPos.y), 220, 20, 12, WHITE);
+      drawSceneSprite(tipFinger, uiToScreenX(fingerPos.x), uiToScreenY(fingerPos.y));
+    }
     batcher.end();
   }
   function renderPass() {
     renderGame(0);
     batcher.begin(proj);
     drawRect(0, 0, W, H2, packABGR(0, 0, 0, 170));
-    const cx = W / 2, cy = H2 / 2;
-    drawRect(cx - 144, cy - 134, 288, 268, packABGR(10, 20, 60, 255));
-    drawRect(cx - 140, cy - 130, 280, 260, packABGR(30, 58, 138, 255));
-    drawRect(cx - 140, cy - 130, 280, 4, YELLOW);
-    drawRect(cx - 140, cy + 126, 280, 4, YELLOW);
-    drawRect(cx - 140, cy - 130, 4, 260, YELLOW);
-    drawRect(cx + 136, cy - 130, 4, 260, YELLOW);
-    const starCols = [cx - 60, cx, cx + 60];
-    for (const sx of starCols) {
-      const r = 18, ri = 7, sy = cy - 100;
-      batcher.draw(whiteTex, sx - r, sy - r, 2 * r, 2 * r, Math.PI / 4, 0, 0, 1, 1, YELLOW);
-      batcher.draw(whiteTex, sx - ri, sy - ri, 2 * ri, 2 * ri, Math.PI / 4, 0, 0, 1, 1, WHITE);
+    const mask = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/mask");
+    const viewRoot = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View");
+    const cardRoot = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View/card");
+    const panelBg = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View/card/bg");
+    const panelIcon = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View/card/icon");
+    const panelTitle = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View/card/title");
+    const panelDesc = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View/card/desc");
+    const closeX = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View/card/Node/x");
+    const adBtnSprite = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View/ad");
+    const shareBtnSprite = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View/share");
+    const viewPos = getSceneWorldTransform(mainGameScene, viewRoot);
+    const cardPos = getSceneWorldTransform(mainGameScene, cardRoot);
+    if (mask) drawSceneSprite(mask, W * 0.5, H2 * 0.5, { width: W, height: H2 });
+    if (panelBg) drawSceneSprite(panelBg, uiToScreenX(cardPos.x), uiToScreenY(cardPos.y));
+    if (panelIcon) {
+      const pos = getSceneWorldTransform(mainGameScene, panelIcon);
+      drawSceneSprite(panelIcon, uiToScreenX(pos.x), uiToScreenY(pos.y));
     }
-    drawNumber(currentLevel - 1, cx, cy - 32, 46, YELLOW);
-    drawRect(cx - 100, cy + 18, 200, 2, packABGR(59, 130, 246, 200));
-    const nextBtn = { x: cx - 90, y: cy + 30, w: 180, h: 58, id: "next" };
+    if (panelTitle) {
+      const pos = getSceneWorldTransform(mainGameScene, panelTitle);
+      drawSceneText("\u8FC7\u5173\u6210\u529F", uiToScreenX(pos.x), uiToScreenY(pos.y), 120, 28, 22, WHITE);
+    }
+    if (panelDesc) {
+      const pos = getSceneWorldTransform(mainGameScene, panelDesc);
+      drawSceneText(`\u7B2C${currentLevel - 1}\u5173\u5B8C\u6210`, uiToScreenX(pos.x), uiToScreenY(pos.y), 180, 42, 16, packABGR(226, 232, 240, 255));
+    }
+    if (closeX) {
+      const pos = getSceneWorldTransform(mainGameScene, closeX);
+      drawSceneSprite(closeX, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    const nextBtnPos = getSceneWorldTransform(mainGameScene, adBtnSprite);
+    const nextBtnSize = getSceneButtonRect(adBtnSprite, 204, 56);
+    const nextBtn = { x: uiToScreenX(nextBtnPos.x) - nextBtnSize.width * 0.5, y: uiToScreenY(nextBtnPos.y) - nextBtnSize.height * 0.5, w: nextBtnSize.width, h: nextBtnSize.height, id: "next" };
     uiButtons.push(nextBtn);
-    drawRect(nextBtn.x + 3, nextBtn.y + 4, nextBtn.w, nextBtn.h, SHADOW);
-    drawRect(nextBtn.x, nextBtn.y, nextBtn.w, nextBtn.h, GREEN);
-    drawLabel(lblNext, nextBtn.x + nextBtn.w * 0.4, nextBtn.y + nextBtn.h / 2, 110, 36, WHITE);
-    drawNumber(currentLevel, nextBtn.x + nextBtn.w * 0.8, nextBtn.y + nextBtn.h / 2, 28, YELLOW);
+    if (adBtnSprite) drawSceneSprite(adBtnSprite, uiToScreenX(nextBtnPos.x), uiToScreenY(nextBtnPos.y));
+    if (shareBtnSprite) {
+      const pos = getSceneWorldTransform(mainGameScene, shareBtnSprite);
+      drawSceneSprite(shareBtnSprite, uiToScreenX(pos.x), uiToScreenY(pos.y), { tint: packABGR(148, 163, 184, 220) });
+    }
+    drawSceneText("\u4E0B\u4E00\u5173", uiToScreenX(nextBtnPos.x), uiToScreenY(nextBtnPos.y), 110, 24, 18, WHITE);
     batcher.end();
   }
   function renderLose() {
     renderGame(0);
     batcher.begin(proj);
     drawRect(0, 0, W, H2, packABGR(0, 0, 0, 170));
-    const cx = W / 2, cy = H2 / 2;
-    drawRect(cx - 144, cy - 124, 288, 248, packABGR(30, 5, 5, 255));
-    drawRect(cx - 140, cy - 120, 280, 240, packABGR(100, 20, 20, 255));
-    drawRect(cx - 140, cy - 120, 280, 4, RED);
-    drawRect(cx - 140, cy + 116, 280, 4, RED);
-    drawRect(cx - 140, cy - 120, 4, 240, RED);
-    drawRect(cx + 136, cy - 120, 4, 240, RED);
-    const xc = cx, xyc = cy - 62, r3 = 22;
-    batcher.draw(whiteTex, xc - r3, xyc - 4, 2 * r3, 8, Math.PI / 4, 0, 0, 1, 1, RED);
-    batcher.draw(whiteTex, xc - r3, xyc - 4, 2 * r3, 8, -Math.PI / 4, 0, 0, 1, 1, RED);
-    drawNumber(currentLevel, cx, cy - 12, 40, packABGR(255, 100, 100, 255));
-    drawRect(cx - 100, cy + 24, 200, 2, packABGR(200, 50, 50, 200));
-    const retryBtn = { x: cx - 90, y: cy + 34, w: 180, h: 58, id: "retry" };
+    const mask = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/mask");
+    const viewRoot = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View");
+    const cardRoot = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View/card");
+    const panelBg = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View/card/bg");
+    const panelTitle = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View/card/title");
+    const panelDesc = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View/card/desc");
+    const closeX = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View/card/Node/x");
+    const shareBtnSprite = getVisibleScenePathEntity(mainGameScene, "Canvas/propTip/View/share");
+    const cardPos = getSceneWorldTransform(mainGameScene, cardRoot);
+    if (mask) drawSceneSprite(mask, W * 0.5, H2 * 0.5, { width: W, height: H2 });
+    if (panelBg) drawSceneSprite(panelBg, uiToScreenX(cardPos.x), uiToScreenY(cardPos.y), { tint: packABGR(255, 180, 180, 255) });
+    if (panelTitle) {
+      const pos = getSceneWorldTransform(mainGameScene, panelTitle);
+      drawSceneText("\u6311\u6218\u5931\u8D25", uiToScreenX(pos.x), uiToScreenY(pos.y), 120, 28, 22, WHITE);
+    }
+    if (panelDesc) {
+      const pos = getSceneWorldTransform(mainGameScene, panelDesc);
+      drawSceneText(`\u7B2C${currentLevel}\u5173\u672A\u5B8C\u6210`, uiToScreenX(pos.x), uiToScreenY(pos.y), 200, 42, 16, packABGR(254, 226, 226, 255));
+    }
+    if (closeX) {
+      const pos = getSceneWorldTransform(mainGameScene, closeX);
+      drawSceneSprite(closeX, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    const retryBtnPos = getSceneWorldTransform(mainGameScene, shareBtnSprite);
+    const retryBtnSize = getSceneButtonRect(shareBtnSprite, 204, 56);
+    const retryBtn = { x: uiToScreenX(retryBtnPos.x) - retryBtnSize.width * 0.5, y: uiToScreenY(retryBtnPos.y) - retryBtnSize.height * 0.5, w: retryBtnSize.width, h: retryBtnSize.height, id: "retry" };
     uiButtons.push(retryBtn);
-    drawRect(retryBtn.x + 3, retryBtn.y + 4, retryBtn.w, retryBtn.h, SHADOW);
-    drawRect(retryBtn.x, retryBtn.y, retryBtn.w, retryBtn.h, packABGR(220, 38, 38, 255));
-    drawLabel(lblRetry, retryBtn.x + retryBtn.w * 0.38, retryBtn.y + retryBtn.h / 2, 96, 36, WHITE);
-    drawNumber(currentLevel, retryBtn.x + retryBtn.w * 0.78, retryBtn.y + retryBtn.h / 2, 26, YELLOW);
+    if (shareBtnSprite) drawSceneSprite(shareBtnSprite, uiToScreenX(retryBtnPos.x), uiToScreenY(retryBtnPos.y), { tint: packABGR(248, 113, 113, 255) });
+    drawSceneText("\u91CD\u8BD5", uiToScreenX(retryBtnPos.x), uiToScreenY(retryBtnPos.y), 96, 24, 18, WHITE);
     batcher.end();
   }
   function requestFrame(cb) {
@@ -3332,10 +3671,13 @@ var TILE_INDICES = new Uint16Array([
     loadLevel();
     setupAudio();
     loadTileAtlas(() => {
+      loadingProgress = 0.35;
       setupTouch();
       requestFrame(render);
       state.summary = "running";
       log("game running, level=", currentLevel);
+      loadingProgress = 1;
+      scene = "home";
     });
   }
   if (typeof globalThis !== "undefined") globalThis.__MJ_GAME__ = state;
