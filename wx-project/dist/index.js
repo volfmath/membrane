@@ -2265,7 +2265,6 @@ var TILE_INDICES = new Uint16Array([
   const TSPACE_X = 3.2;
   const TSPACE_Z = 4.2;
   const TSPACE_Y = 2.2;
-  const SPAWN_Y = 16;
   function packABGR(r, g, b, a) {
     return ((a & 255) << 24 | (b & 255) << 16 | (g & 255) << 8 | r & 255) >>> 0;
   }
@@ -2786,21 +2785,30 @@ var TILE_INDICES = new Uint16Array([
     for (const t of tiles) if (!t.removing) pos.add(`${t.col},${t.row},${t.layer}`);
     for (const t of tiles) t.blocked = !t.removing && pos.has(`${t.col},${t.row},${t.layer + 1}`);
   }
-  function makeWorldTile(id, pos) {
+  function makeWorldTile(id, pos, spawnIndex = 0) {
     var _a;
     const { twx, twy, twz } = tileWorldPos(pos.col, pos.row, pos.layer);
-    const sc = (_a = camera3d.worldToScreen(twx, twy + 1, twz, W, H2)) != null ? _a : { x: W / 2, y: H2 / 2 };
+    const angle = spawnIndex * 0.26;
+    const radius = 3 + spawnIndex % 5 * 0.18;
+    const swx = Math.cos(angle) * radius;
+    const swz = Math.sin(angle) * radius;
+    const swy = 1 + spawnIndex * 0.05;
+    const sc = (_a = camera3d.worldToScreen(swx, swy + 1, swz, W, H2)) != null ? _a : { x: W / 2, y: H2 / 2 };
     return {
       id,
       col: pos.col,
       row: pos.row,
       layer: pos.layer,
-      wx: twx,
-      wy: SPAWN_Y,
-      wz: twz,
+      wx: swx,
+      wy: swy,
+      wz: swz,
       twx,
       twy,
       twz,
+      swx,
+      swy,
+      swz,
+      animDelay: spawnIndex * 0.028,
       sx: sc.x,
       sy: sc.y,
       animating: true,
@@ -2825,7 +2833,7 @@ var TILE_INDICES = new Uint16Array([
     worldTiles = [];
     slotTiles = [];
     const layout = generateStackedLayout(pool.length);
-    worldTiles = layout.map((pos, i) => makeWorldTile(pool[i], pos));
+    worldTiles = layout.map((pos, i) => makeWorldTile(pool[i], pos, i));
     computeBlocked(worldTiles);
     scene = "game";
     log("level", level, "tiles", pool.length, "groups", totalGroups);
@@ -2937,7 +2945,7 @@ var TILE_INDICES = new Uint16Array([
     slotTiles = [];
     const shuffledIds = shuffle(allIds);
     const layout = generateStackedLayout(shuffledIds.length);
-    worldTiles = layout.map((pos, i) => makeWorldTile(shuffledIds[i], pos));
+    worldTiles = layout.map((pos, i) => makeWorldTile(shuffledIds[i], pos, i));
     computeBlocked(worldTiles);
   }
   function propYiChu() {
@@ -2967,7 +2975,7 @@ var TILE_INDICES = new Uint16Array([
       const [c, r] = key.split(",").map(Number);
       const layer = ((_b = stackTop[key]) != null ? _b : -1) + 1;
       stackTop[key] = layer;
-      worldTiles.push(makeWorldTile(st.id, { col: c, row: r, layer }));
+      worldTiles.push(makeWorldTile(st.id, { col: c, row: r, layer }, worldTiles.length + i));
     }
     computeBlocked(worldTiles);
   }
@@ -3245,13 +3253,18 @@ var TILE_INDICES = new Uint16Array([
       if (t.removing) {
         t.removeT = Math.min(1, t.removeT + dt * 4);
       } else if (t.animating) {
-        t.animT = Math.min(1, t.animT + dt * 6);
-        const ease = 1 - Math.pow(1 - t.animT, 3);
-        t.wx = t.twx;
-        t.wy = SPAWN_Y + (t.twy - SPAWN_Y) * ease;
-        t.wz = t.twz;
-        if (t.animT >= 1) {
+        t.animT = Math.min(1, t.animT + dt * 3.2);
+        const delayed = Math.max(0, t.animT - t.animDelay);
+        const span = Math.max(1e-4, 1 - t.animDelay);
+        const p = Math.min(1, delayed / span);
+        const ease = 1 - Math.pow(1 - p, 3);
+        t.wx = t.swx + (t.twx - t.swx) * ease;
+        t.wy = t.swy + (t.twy - t.swy) * ease;
+        t.wz = t.swz + (t.twz - t.swz) * ease;
+        if (p >= 1) {
+          t.wx = t.twx;
           t.wy = t.twy;
+          t.wz = t.twz;
           t.animating = false;
         }
       }

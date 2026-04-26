@@ -31,7 +31,6 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
   const TSPACE_X = 3.2;
   const TSPACE_Z = 4.2;
   const TSPACE_Y = 2.2;
-  const SPAWN_Y = 16;
 
   function packABGR(r: number, g: number, b: number, a: number): number {
     return ((a & 0xFF) << 24 | (b & 0xFF) << 16 | (g & 0xFF) << 8 | (r & 0xFF)) >>> 0;
@@ -238,6 +237,8 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     col: number; row: number; layer: number;
     wx: number; wy: number; wz: number;   // current world position
     twx: number; twy: number; twz: number; // target world position
+    swx: number; swy: number; swz: number; // spawn world position
+    animDelay: number;
     sx: number; sy: number;               // projected screen center (top face)
     animating: boolean;
     animT: number;
@@ -614,13 +615,20 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     for (const t of tiles) t.blocked = !t.removing && pos.has(`${t.col},${t.row},${t.layer+1}`);
   }
 
-  function makeWorldTile(id: number, pos: GridPos): WorldTile {
+  function makeWorldTile(id: number, pos: GridPos, spawnIndex = 0): WorldTile {
     const { twx, twy, twz } = tileWorldPos(pos.col, pos.row, pos.layer);
-    const sc = camera3d.worldToScreen(twx, twy + 1, twz, W, H) ?? { x: W/2, y: H/2 };
+    const angle = spawnIndex * 0.26;
+    const radius = 3 + (spawnIndex % 5) * 0.18;
+    const swx = Math.cos(angle) * radius;
+    const swz = Math.sin(angle) * radius;
+    const swy = 1 + spawnIndex * 0.05;
+    const sc = camera3d.worldToScreen(swx, swy + 1, swz, W, H) ?? { x: W/2, y: H/2 };
     return {
       id, col: pos.col, row: pos.row, layer: pos.layer,
-      wx: twx, wy: SPAWN_Y, wz: twz,
+      wx: swx, wy: swy, wz: swz,
       twx, twy, twz,
+      swx, swy, swz,
+      animDelay: spawnIndex * 0.028,
       sx: sc.x, sy: sc.y,
       animating: true, animT: 0,
       depth: pos.layer * 1000 + pos.row * GRID_COLS + pos.col,
@@ -648,7 +656,7 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     slotTiles = [];
 
     const layout = generateStackedLayout(pool.length);
-    worldTiles = layout.map((pos, i) => makeWorldTile(pool[i], pos));
+    worldTiles = layout.map((pos, i) => makeWorldTile(pool[i], pos, i));
     computeBlocked(worldTiles);
 
     scene = 'game';
@@ -752,7 +760,7 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     slotTiles = [];
     const shuffledIds = shuffle(allIds);
     const layout = generateStackedLayout(shuffledIds.length);
-    worldTiles = layout.map((pos, i) => makeWorldTile(shuffledIds[i], pos));
+    worldTiles = layout.map((pos, i) => makeWorldTile(shuffledIds[i], pos, i));
     computeBlocked(worldTiles);
   }
 
@@ -783,7 +791,7 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
       const [c, r] = key.split(',').map(Number);
       const layer = (stackTop[key] ?? -1) + 1;
       stackTop[key] = layer;
-      worldTiles.push(makeWorldTile(st.id, { col: c, row: r, layer }));
+      worldTiles.push(makeWorldTile(st.id, { col: c, row: r, layer }, worldTiles.length + i));
     }
     computeBlocked(worldTiles);
   }
@@ -1051,12 +1059,20 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
       if (t.removing) {
         t.removeT = Math.min(1, t.removeT + dt * 4);
       } else if (t.animating) {
-        t.animT = Math.min(1, t.animT + dt * 6);
-        const ease = 1 - Math.pow(1 - t.animT, 3);
-        t.wx = t.twx;
-        t.wy = SPAWN_Y + (t.twy - SPAWN_Y) * ease;
-        t.wz = t.twz;
-        if (t.animT >= 1) { t.wy = t.twy; t.animating = false; }
+        t.animT = Math.min(1, t.animT + dt * 3.2);
+        const delayed = Math.max(0, t.animT - t.animDelay);
+        const span = Math.max(0.0001, 1 - t.animDelay);
+        const p = Math.min(1, delayed / span);
+        const ease = 1 - Math.pow(1 - p, 3);
+        t.wx = t.swx + (t.twx - t.swx) * ease;
+        t.wy = t.swy + (t.twy - t.swy) * ease;
+        t.wz = t.swz + (t.twz - t.swz) * ease;
+        if (p >= 1) {
+          t.wx = t.twx;
+          t.wy = t.twy;
+          t.wz = t.twz;
+          t.animating = false;
+        }
       }
       // Update screen projection for hit testing
       const sc = camera3d.worldToScreen(t.wx, t.wy + 1, t.wz, W, H);
