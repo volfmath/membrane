@@ -12,6 +12,8 @@ export interface TransformComponent {
   scaleZ?: number;
   anchorX?: number;
   anchorY?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface SpriteComponent {

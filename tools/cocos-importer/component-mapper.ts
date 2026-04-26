@@ -80,6 +80,11 @@ function mapTransform(
       if (anchor.x !== 0.5) t.anchorX = anchor.x;
       if (anchor.y !== 0.5) t.anchorY = anchor.y;
     }
+    const contentSize = data._contentSize as CocosSize | undefined;
+    if (contentSize) {
+      if (contentSize.width !== 0) t.width = contentSize.width;
+      if (contentSize.height !== 0) t.height = contentSize.height;
+    }
   }
 
   return t;

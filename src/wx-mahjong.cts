@@ -46,7 +46,7 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
   const SLOT_BG = packABGR(30,  41,  59,  255);
 
   // ─── Scene ────────────────────────────────────────────────────────────────
-  type Scene = 'home' | 'game' | 'pass' | 'lose';
+  type Scene = 'loading' | 'home' | 'game' | 'pass' | 'lose';
 
   // ─── 3D Shaders ───────────────────────────────────────────────────────────
   // vertex: pos+norm+uv → clip space; fragment: Lambertian body + atlas-sampled face
@@ -78,9 +78,15 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
   let lblNext:   WebGLTexture | null = null;
   let lblRetry:  WebGLTexture | null = null;
   const lblProp: (WebGLTexture | null)[] = [null, null, null, null];
+  interface LoadedSpriteTexture {
+    texture: WebGLTexture;
+    width: number;
+    height: number;
+  }
+
   let fixtureData: CompiledFixtureData | null = null;
   let spriteFrameMap: Record<string, CompiledSpriteFrame> = {};
-  const spriteTexCache = new Map<string, WebGLTexture | null>();
+  const spriteTexCache = new Map<string, LoadedSpriteTexture | null>();
 
   // ─── 3D Setup ─────────────────────────────────────────────────────────────
   function computeVP(): void {
@@ -264,9 +270,10 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     sceneId: string;
     entities: RuntimeSceneEntity[];
     byName: Map<string, RuntimeSceneEntity[]>;
+    byPath: Map<string, RuntimeSceneEntity>;
   }
 
-  let scene: Scene = 'home';
+  let scene: Scene = 'loading';
   let currentLevel = 1;
   let cfg: ILevelConfig;
   let worldTiles: WorldTile[] = [];
@@ -280,6 +287,8 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
   let fixtureScenes: CompiledSceneData[] = [];
   let homeScene: RuntimeSceneView | null = null;
   let loadingScene: RuntimeSceneView | null = null;
+  let mainGameScene: RuntimeSceneView | null = null;
+  let loadingProgress = 0.12;
 
   const props = { xiPai: 1, yiChu: 1, xiaochu: 1, shiZhong: 1 };
 
@@ -291,7 +300,8 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
       spriteFrameMap = fixture?.spriteFrames ?? {};
       homeScene = buildRuntimeSceneView('Home');
       loadingScene = buildRuntimeSceneView('Loading');
-      log('fixture scenes', fixtureScenes.length, 'sprites=', Object.keys(spriteFrameMap).length, 'home=', !!homeScene, 'loading=', !!loadingScene);
+      mainGameScene = buildRuntimeSceneView('MainGame');
+      log('fixture scenes', fixtureScenes.length, 'sprites=', Object.keys(spriteFrameMap).length, 'home=', !!homeScene, 'loading=', !!loadingScene, 'game=', !!mainGameScene);
     } catch (e: any) {
       warn('fixture load failed', e?.message ?? e);
       fixtureData = null;
@@ -299,6 +309,7 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
       spriteFrameMap = {};
       homeScene = null;
       loadingScene = null;
+      mainGameScene = null;
     }
   }
 
@@ -307,21 +318,48 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     if (!raw) return null;
     const entities = raw.entities as RuntimeSceneEntity[];
     const byName = new Map<string, RuntimeSceneEntity[]>();
+    const byPath = new Map<string, RuntimeSceneEntity>();
     for (const entity of entities) {
       const list = byName.get(entity.name) ?? [];
       list.push(entity);
       byName.set(entity.name, list);
+      const path = entity.parent ? `${entity.parent}/${entity.name}` : entity.name;
+      byPath.set(path, entity);
     }
-    return { sceneId, entities, byName };
+    return { sceneId, entities, byName, byPath };
   }
 
   function getSceneEntities(view: RuntimeSceneView | null, name: string): RuntimeSceneEntity[] {
     return view?.byName.get(name) ?? [];
   }
 
+  function getScenePathEntity(view: RuntimeSceneView | null, path: string): RuntimeSceneEntity | null {
+    return view?.byPath.get(path) ?? null;
+  }
+
+  function getVisibleScenePathEntity(view: RuntimeSceneView | null, path: string): RuntimeSceneEntity | null {
+    const entity = getScenePathEntity(view, path);
+    return entity && isSceneEntityVisible(view, entity) ? entity : null;
+  }
+
   function getSceneEntity(view: RuntimeSceneView | null, name: string): RuntimeSceneEntity | null {
     const list = getSceneEntities(view, name);
-    return list.length > 0 ? list[0] : null;
+    return list.find((entity) => isSceneEntityVisible(view, entity)) ?? null;
+  }
+
+  function getSceneWorldTransform(view: RuntimeSceneView | null, entity: RuntimeSceneEntity | null): { x: number; y: number } {
+    if (!view || !entity) return { x: 0, y: 0 };
+    let x = getTransformNumber(entity, 'x');
+    let y = getTransformNumber(entity, 'y');
+    let parentPath = entity.parent;
+    while (parentPath) {
+      const parent = getScenePathEntity(view, parentPath);
+      if (!parent) break;
+      x += getTransformNumber(parent, 'x');
+      y += getTransformNumber(parent, 'y');
+      parentPath = parent.parent;
+    }
+    return { x, y };
   }
 
   function getTransformNumber(entity: RuntimeSceneEntity | null, key: string, fallback = 0): number {
@@ -329,17 +367,64 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     return typeof value === 'number' ? value : fallback;
   }
 
+  function isSceneEntityVisible(view: RuntimeSceneView | null, entity: RuntimeSceneEntity | null): boolean {
+    if (!view || !entity) return false;
+    if (entity.enabled === false) return false;
+    let parentPath = entity.parent;
+    while (parentPath) {
+      const parent = getScenePathEntity(view, parentPath);
+      if (!parent) break;
+      if (parent.enabled === false) return false;
+      parentPath = parent.parent;
+    }
+    return true;
+  }
+
+  function getSceneSize(entity: RuntimeSceneEntity | null): { width: number; height: number } {
+    return {
+      width: getTransformNumber(entity, 'width'),
+      height: getTransformNumber(entity, 'height'),
+    };
+  }
+
+  function uiSizeToScreenWidth(width: number): number {
+    return (width / UI_DESIGN_W) * W;
+  }
+
+  function uiSizeToScreenHeight(height: number): number {
+    return (height / UI_DESIGN_H) * H;
+  }
+
+  function getSceneScreenSize(entity: RuntimeSceneEntity | null): { width: number; height: number } {
+    const size = getSceneSize(entity);
+    return {
+      width: uiSizeToScreenWidth(size.width),
+      height: uiSizeToScreenHeight(size.height),
+    };
+  }
+
+  function getSceneButtonRect(entity: RuntimeSceneEntity | null, fallbackWidth: number, fallbackHeight: number): { width: number; height: number } {
+    const size = getSceneScreenSize(entity);
+    return {
+      width: size.width || fallbackWidth,
+      height: size.height || fallbackHeight,
+    };
+  }
+
   function getLabelText(entity: RuntimeSceneEntity | null, fallback = ''): string {
     const value = entity?.components?.Label?.text;
     return typeof value === 'string' ? value : fallback;
   }
 
+  const UI_DESIGN_W = 720;
+  const UI_DESIGN_H = 1280;
+
   function uiToScreenX(x: number): number {
-    return W * 0.5 + x;
+    return (x / UI_DESIGN_W) * W;
   }
 
   function uiToScreenY(y: number): number {
-    return H * 0.5 - y;
+    return ((UI_DESIGN_H - y) / UI_DESIGN_H) * H;
   }
 
   function parseHexColor(hex: string | undefined, fallback: number): number {
@@ -358,14 +443,17 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     return spriteFrameMap[`${atlas}@${frame}`] ?? null;
   }
 
-  function ensureSpriteTexture(imagePath: string): WebGLTexture | null {
+  function ensureSpriteTexture(imagePath: string): LoadedSpriteTexture | null {
     const cached = spriteTexCache.get(imagePath);
     if (cached !== undefined) return cached;
     try {
       const img = wx.createImage();
       const tex = device.createTexture();
+      const loaded: LoadedSpriteTexture = { texture: tex, width: 1, height: 1 };
       img.onload = () => {
         const gl = device.gl;
+        loaded.width = img.width || 1;
+        loaded.height = img.height || 1;
         gl.bindTexture(gl.TEXTURE_2D, tex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -375,8 +463,8 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
       };
       img.onerror = (e: any) => warn('sprite image err', imagePath, e?.errMsg ?? e);
       img.src = imagePath;
-      spriteTexCache.set(imagePath, tex);
-      return tex;
+      spriteTexCache.set(imagePath, loaded);
+      return loaded;
     } catch (e) {
       warn('sprite texture fail', imagePath, e);
       spriteTexCache.set(imagePath, null);
@@ -388,12 +476,52 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     if (!entity) return;
     const frame = getSpriteFrame(entity);
     if (!frame) return;
-    const tex = ensureSpriteTexture(frame.image);
-    if (!tex) return;
-    const w = opts?.width ?? frame.originalSize.width;
-    const h = opts?.height ?? frame.originalSize.height;
+    const loaded = ensureSpriteTexture(frame.image);
+    if (!loaded) return;
+    const scaleX = Math.abs(getTransformNumber(entity, 'scaleX', 1)) || 1;
+    const scaleY = Math.abs(getTransformNumber(entity, 'scaleY', 1)) || 1;
+    const size = getSceneScreenSize(entity);
+    const importedWidth = size.width > 0 ? size.width * scaleX : 0;
+    const importedHeight = size.height > 0 ? size.height * scaleY : 0;
+    const w = opts?.width ?? (importedWidth || frame.originalSize.width * scaleX);
+    const h = opts?.height ?? (importedHeight || frame.originalSize.height * scaleY);
     const tint = opts?.tint ?? parseHexColor(entity.components.Sprite?.color, WHITE);
-    batcher.draw(tex, x - w * 0.5, y - h * 0.5, w, h, 0, 0, 0, 1, 1, tint);
+    const texW = Math.max(1, loaded.width);
+    const texH = Math.max(1, loaded.height);
+    const u0 = frame.rect.x / texW;
+    const v0 = frame.rect.y / texH;
+    const u1 = (frame.rect.x + frame.rect.width) / texW;
+    const v1 = (frame.rect.y + frame.rect.height) / texH;
+    batcher.draw(loaded.texture, x - w * 0.5, y - h * 0.5, w, h, 0, u0, v0, u1, v1, tint);
+  }
+
+  function drawSceneEntitySprite(view: RuntimeSceneView | null, name: string, opts?: { width?: number; height?: number; tint?: number; fallbackX?: number; fallbackY?: number }): void {
+    const entity = getSceneEntity(view, name);
+    if (!entity || !isSceneEntityVisible(view, entity)) return;
+    const pos = getSceneWorldTransform(view, entity);
+    const rawX = pos.x || opts?.fallbackX || 0;
+    const rawY = pos.y || opts?.fallbackY || 0;
+    drawSceneSprite(
+      entity,
+      uiToScreenX(rawX),
+      uiToScreenY(rawY),
+      opts,
+    );
+  }
+
+  function getChildSceneEntity(view: RuntimeSceneView | null, parentSuffix: string, name: string): RuntimeSceneEntity | null {
+    return getSceneEntities(view, name).find((entity) => entity.parent?.endsWith(parentSuffix) && isSceneEntityVisible(view, entity)) ?? null;
+  }
+
+  function drawSceneText(text: string, cx: number, cy: number, w: number, h: number, size: number, color = WHITE): void {
+    drawLabel(makeTextTex(text, Math.max(32, Math.ceil(w)), Math.max(20, Math.ceil(h)), size), cx, cy, w, h, color);
+  }
+
+  function formatTimerLabel(sec: number): string {
+    const total = Math.max(0, Math.floor(sec));
+    const min = Math.floor(total / 60);
+    const remain = total % 60;
+    return `${String(min).padStart(2, '0')}:${String(remain).padStart(2, '0')}`;
   }
 
   function saveLevel(): void {
@@ -409,8 +537,18 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
   const SLOT_Y = () => H - SLOT_H + 10;
   const PLAY_BOT = () => H - SLOT_H;
 
-  function slotTargetX(i: number): number { return (W / (MAX_SLOT + 1)) * (i + 1); }
-  function slotTargetY(): number { return SLOT_Y() + TILE_H / 2; }
+  function getSlotAnchor(i: number): { x: number; y: number } {
+    const tileFrames = getSceneEntities(mainGameScene, 'TileIn');
+    const frame = tileFrames[i] ?? null;
+    if (frame) {
+      const pos = getSceneWorldTransform(mainGameScene, frame);
+      return { x: uiToScreenX(pos.x), y: uiToScreenY(pos.y) };
+    }
+    return { x: (W / (MAX_SLOT + 1)) * (i + 1), y: SLOT_Y() + TILE_H / 2 };
+  }
+
+  function slotTargetX(i: number): number { return getSlotAnchor(i).x; }
+  function slotTargetY(i = 0): number { return getSlotAnchor(i).y; }
 
   // ─── 3D Grid Helpers ──────────────────────────────────────────────────────
   interface GridPos { col: number; row: number; layer: number; }
@@ -505,14 +643,14 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
 
     slotTiles.splice(pos, 0, {
       id, x: fromX, y: fromY,
-      tx: slotTargetX(pos), ty: slotTargetY(),
+      tx: slotTargetX(pos), ty: slotTargetY(pos),
       animating: true, animT: 0,
       removing: false, removeT: 0,
     });
 
     for (let i = 0; i < slotTiles.length; i++) {
       slotTiles[i].tx = slotTargetX(i);
-      slotTiles[i].ty = slotTargetY();
+      slotTiles[i].ty = slotTargetY(i);
     }
     return true;
   }
@@ -538,6 +676,7 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
       slotTiles = slotTiles.filter(t => !t.removing);
       for (let i = 0; i < slotTiles.length; i++) {
         slotTiles[i].tx = slotTargetX(i);
+        slotTiles[i].ty = slotTargetY(i);
         slotTiles[i].animating = true;
       }
       checkWin();
@@ -598,7 +737,9 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     props.yiChu--;
     const returned = slotTiles.splice(0, slotTiles.length);
     for (let i = 0; i < slotTiles.length; i++) {
-      slotTiles[i].tx = slotTargetX(i); slotTiles[i].animating = true;
+      slotTiles[i].tx = slotTargetX(i);
+      slotTiles[i].ty = slotTargetY(i);
+      slotTiles[i].animating = true;
     }
     const stackTop: Record<string, number> = {};
     for (const t of worldTiles) {
@@ -693,14 +834,26 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     { key: 'xiaochu',  label: '消除', x: 2 },
     { key: 'shiZhong', label: '+时间', x: 3 },
   ];
-  function propBtnX(i: number): number { return 4 + i * (PROP_BTN_W + 4); }
-  function propBtnY(): number { return H - SLOT_H - PROP_BTN_H - 4; }
+  function propBtnAnchor(i: number): { x: number; y: number } {
+    const names = ['b1', 'b3', 'b4', 'b2'];
+    const entity = getSceneEntity(mainGameScene, names[i]);
+    if (entity) {
+      const pos = getSceneWorldTransform(mainGameScene, entity);
+      return {
+        x: uiToScreenX(pos.x),
+        y: uiToScreenY(pos.y),
+      };
+    }
+    return { x: 30 + PROP_BTN_W * 0.5 + i * 92, y: H - SLOT_H - PROP_BTN_H - 22 };
+  }
+  function propBtnX(i: number): number { return propBtnAnchor(i).x - PROP_BTN_W * 0.5; }
+  function propBtnY(i = 0): number { return propBtnAnchor(i).y - PROP_BTN_H * 0.5; }
 
   function hitTestPropBtn(tx: number, ty: number): string | null {
-    const by = propBtnY();
     for (let i = 0; i < PROP_BTNS.length; i++) {
       const bx = propBtnX(i);
-      if (tx >= bx && tx <= bx+PROP_BTN_W && ty >= by && ty <= by+PROP_BTN_H) return PROP_BTNS[i].key;
+      const by = propBtnY(i);
+      if (tx >= bx && tx <= bx + PROP_BTN_W && ty >= by && ty <= by + PROP_BTN_H) return PROP_BTNS[i].key;
     }
     return null;
   }
@@ -902,7 +1055,8 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
 
     uiButtons = [];
 
-    if (scene === 'home') { renderHome(); }
+    if (scene === 'loading') { renderLoading(); }
+    else if (scene === 'home') { renderHome(); }
     else if (scene === 'game') { renderGame(dt); }
     else if (scene === 'pass') { renderPass(); }
     else if (scene === 'lose') { renderLose(); }
@@ -910,93 +1064,210 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     requestFrame(render);
   }
 
+  function renderLoading(): void {
+    batcher.begin(proj);
+    drawRect(0, 0, W, H, packABGR(8, 15, 30, 255));
+    drawSceneSprite(getSceneEntity(loadingScene, 'mjbg.png'), W * 0.5, H * 0.5, { width: W, height: H });
+    drawSceneEntitySprite(loadingScene, '4a2996d24d5de3a7489e8fbcec34cb3', { fallbackY: 343.25199999999995 });
+
+    const progressRoot = getSceneEntity(loadingScene, 'ProgressBar');
+    const progressX = uiToScreenX(getTransformNumber(progressRoot, 'x'));
+    const progressY = uiToScreenY(getTransformNumber(progressRoot, 'y', -491.172));
+    drawSceneSprite(progressRoot, progressX, progressY);
+
+    const fillW = Math.max(16, Math.round(292 * loadingProgress));
+    drawSceneEntitySprite(loadingScene, 'Bar', { width: fillW, height: 16, fallbackX: -300.972, fallbackY: -500.329 });
+    drawSceneText(`${Math.round(loadingProgress * 100)}%`, progressX, progressY - 28, 72, 22, 16, WHITE);
+
+    const legal = getSceneEntity(loadingScene, '抵制不良游戏，拒绝盗版游戏。      注意自我保护，谨防受骗上当。       适度游戏益脑，沉迷游戏伤身。      合理');
+    drawSceneText(getLabelText(legal, '健康游戏提示'), W * 0.5, H - 42, W - 48, 18, 10, packABGR(226, 232, 240, 220));
+    drawSceneText('8+', W * 0.5, H - 22, 24, 18, 12, packABGR(251, 191, 36, 255));
+    batcher.end();
+  }
+
   // ─── Home Screen ──────────────────────────────────────────────────────────
   function renderHome(): void {
     batcher.begin(proj);
 
     drawRect(0, 0, W, H, packABGR(8, 15, 30, 255));
-
     drawSceneSprite(getSceneEntity(homeScene, 'mjbg.png'), W * 0.5, H * 0.5, { width: W, height: H });
-    drawSceneSprite(getSceneEntity(homeScene, 'Logo'), W * 0.5, 112, { width: 170, height: 74 });
+    drawSceneEntitySprite(homeScene, 'Logo', { fallbackY: 293.905 });
+    drawSceneEntitySprite(homeScene, 'btnSetting', { fallbackX: -291.454, fallbackY: 512.71 });
 
-    const sideSpriteNames = ['btnMission', 'btnLuckilyBox', 'btnSaveGold', 'btnGameClub', 'btnRank', 'btnInvateFriend'];
+    const sideSpriteNames = ['btnMission', 'btnLuckilyBox', 'btnSaveGold', 'btnDailyChallenge', 'btnGameClub', 'btnRank', 'btnInvateFriend'];
     for (const name of sideSpriteNames) {
       const entity = getSceneEntity(homeScene, name);
       if (!entity) continue;
-      drawSceneSprite(entity, uiToScreenX(getTransformNumber(entity, 'x')), uiToScreenY(getTransformNumber(entity, 'y')), { width: 84, height: 84 });
+      const pos = getSceneWorldTransform(homeScene, entity);
+      drawSceneSprite(entity, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    const dailyDot = getChildSceneEntity(homeScene, '/btnDailyChallenge', '红点');
+    if (dailyDot) {
+      const pos = getSceneWorldTransform(homeScene, dailyDot);
+      drawSceneSprite(dailyDot, uiToScreenX(pos.x), uiToScreenY(pos.y));
     }
 
-    drawSceneSprite(getSceneEntity(homeScene, 'btnPropShop'), 48, H - 110, { width: 82, height: 82 });
-    drawSceneSprite(getSceneEntity(homeScene, 'btnShare'), W - 48, H - 110, { width: 82, height: 82 });
+    const goldRoot = getVisibleScenePathEntity(homeScene, 'Canvas/GoldNum');
+    const fatigueRoot = getVisibleScenePathEntity(homeScene, 'Canvas/FatigueNum');
+    const goldFrame = getChildSceneEntity(homeScene, '/GoldNum', '体力金币框');
+    const goldIcon = getChildSceneEntity(homeScene, '/GoldNum', '金币');
+    const goldAdd = getChildSceneEntity(homeScene, '/GoldNum', 'btnGoldAdd');
+    const goldLabel = getChildSceneEntity(homeScene, '/GoldNum', 'goldNumLabel');
+    const fatigueFrame = getChildSceneEntity(homeScene, '/FatigueNum', '体力金币框');
+    const fatigueIcon = getChildSceneEntity(homeScene, '/FatigueNum', '金币');
+    const fatigueAdd = getChildSceneEntity(homeScene, '/FatigueNum', 'btnFatigueAdd');
+    const fatigueLabel = getChildSceneEntity(homeScene, '/FatigueNum', 'ftNumLabel');
 
-    const topBar = getSceneEntity(homeScene, 'Top');
-    const topY = uiToScreenY(getTransformNumber(topBar, 'y', 640));
-    drawRect(0, 0, W, Math.max(88, topY + 120), packABGR(16, 35, 85, 160));
-
-    const sampleIds = [1, 11, 21, 31, 41, 51, 61, 71];
-    const contentLeft = 72;
-    const contentRight = W - 72;
-    const tileAreaW = contentRight - contentLeft;
-    const cols = 4;
-    const gap = 10;
-    const tileScale = Math.min(1.05, (tileAreaW - gap * (cols - 1)) / (cols * TILE_W));
-    const tw = TILE_W * tileScale;
-    const th = TILE_H * tileScale;
-    const gridW = cols * tw + (cols - 1) * gap;
-    const ox = contentLeft + (tileAreaW - gridW) * 0.5 + tw * 0.5;
-    const oy = 146 + th * 0.5;
-    for (let i = 0; i < sampleIds.length; i++) {
-      const col = i % cols;
-      const row = (i / cols) | 0;
-      const x = ox + col * (tw + gap);
-      const y = oy + row * (th + gap);
-      drawRect(x - tw/2 + TILE_SHADOW, y - th/2 + TILE_SHADOW, tw, th, SHADOW);
-      drawTile(sampleIds[i], x, y, 1, 0, tileScale);
+    if (goldRoot) {
+      const rootPos = getSceneWorldTransform(homeScene, goldRoot);
+      drawSceneSprite(goldFrame, uiToScreenX(rootPos.x), uiToScreenY(rootPos.y));
+      if (goldIcon) {
+        const pos = getSceneWorldTransform(homeScene, goldIcon);
+        drawSceneSprite(goldIcon, uiToScreenX(pos.x), uiToScreenY(pos.y));
+      }
+      if (goldAdd) {
+        const pos = getSceneWorldTransform(homeScene, goldAdd);
+        drawSceneSprite(goldAdd, uiToScreenX(pos.x), uiToScreenY(pos.y));
+      }
+      if (goldLabel) {
+        const pos = getSceneWorldTransform(homeScene, goldLabel);
+        drawSceneText(getLabelText(goldLabel, '0'), uiToScreenX(pos.x), uiToScreenY(pos.y), 36, 18, 14, WHITE);
+      }
+    }
+    if (fatigueRoot) {
+      const rootPos = getSceneWorldTransform(homeScene, fatigueRoot);
+      drawSceneSprite(fatigueFrame, uiToScreenX(rootPos.x), uiToScreenY(rootPos.y));
+      if (fatigueIcon) {
+        const pos = getSceneWorldTransform(homeScene, fatigueIcon);
+        drawSceneSprite(fatigueIcon, uiToScreenX(pos.x), uiToScreenY(pos.y));
+      }
+      if (fatigueAdd) {
+        const pos = getSceneWorldTransform(homeScene, fatigueAdd);
+        drawSceneSprite(fatigueAdd, uiToScreenX(pos.x), uiToScreenY(pos.y));
+      }
+      if (fatigueLabel) {
+        const pos = getSceneWorldTransform(homeScene, fatigueLabel);
+        drawSceneText(getLabelText(fatigueLabel, '0'), uiToScreenX(pos.x), uiToScreenY(pos.y), 36, 18, 14, WHITE);
+      }
     }
 
     const starChest = getSceneEntity(homeScene, 'btnHomeBoxStar');
+    const starChestLeft = getChildSceneEntity(homeScene, '/btnHomeBoxStar', '星星宝箱-2');
+    const starChestMain = getChildSceneEntity(homeScene, '/btnHomeBoxStar', '星星宝箱');
+    const starProgress = getChildSceneEntity(homeScene, '/btnHomeBoxStar', '进度框2');
+    const starTips = getChildSceneEntity(homeScene, '/btnHomeBoxStar', 'tips');
+    const starNum = getChildSceneEntity(homeScene, '/btnHomeBoxStar', 'starNum');
     const levelChest = getSceneEntity(homeScene, 'btnHomeBoxLevel');
-    const starNum = getSceneEntity(homeScene, 'starNum');
-    const levelNum = getSceneEntity(homeScene, 'levelNum');
-    drawSceneSprite(starChest, W * 0.5, uiToScreenY(getTransformNumber(starChest, 'y', -16.12)), { width: 220, height: 92 });
-    drawSceneSprite(levelChest, W * 0.5, uiToScreenY(getTransformNumber(levelChest, 'y', -170)), { width: 220, height: 92 });
-    drawLabel(makeTextTex(getLabelText(starNum, '0/500'), 100, 28, 18), W * 0.5 + 32, uiToScreenY(getTransformNumber(starChest, 'y', -16.12)) + 10, 76, 20, WHITE);
-    drawLabel(makeTextTex(getLabelText(levelNum, `0/${currentLevel}`), 100, 28, 18), W * 0.5 + 32, uiToScreenY(getTransformNumber(levelChest, 'y', -170)) + 10, 76, 20, WHITE);
+    const levelChestLeft = getChildSceneEntity(homeScene, '/btnHomeBoxLevel', '关卡宝箱-2');
+    const levelChestMain = getChildSceneEntity(homeScene, '/btnHomeBoxLevel', '关卡宝箱');
+    const levelProgress = getChildSceneEntity(homeScene, '/btnHomeBoxLevel', '进度框1');
+    const levelTips = getChildSceneEntity(homeScene, '/btnHomeBoxLevel', 'tips');
+    const levelNum = getChildSceneEntity(homeScene, '/btnHomeBoxLevel', 'levelNum');
 
-    const goldRoot = getSceneEntity(homeScene, 'GoldNum');
-    const ftRoot = getSceneEntity(homeScene, 'FatigueNum');
-    const btnGoldAdd = getSceneEntity(homeScene, 'btnGoldAdd');
-    const btnFatigueAdd = getSceneEntity(homeScene, 'btnFatigueAdd');
-    const goldNum = getSceneEntity(homeScene, 'goldNumLabel');
-    const ftNum = getSceneEntity(homeScene, 'ftNumLabel');
-    const goldX = uiToScreenX(getTransformNumber(goldRoot, 'x', -133.002));
-    const goldY = uiToScreenY(getTransformNumber(goldRoot, 'y', 513.23));
-    const ftX = uiToScreenX(getTransformNumber(ftRoot, 'x', 72.349));
-    const ftY = uiToScreenY(getTransformNumber(ftRoot, 'y', 513.23));
-    drawRect(goldX - 58, goldY - 18, 116, 36, packABGR(18, 36, 88, 220));
-    drawSceneSprite(btnGoldAdd, goldX + 44, goldY, { width: 26, height: 26 });
-    drawLabel(makeTextTex(getLabelText(goldNum, '0'), 60, 24, 18), goldX - 6, goldY, 40, 18, WHITE);
-    drawRect(ftX - 58, ftY - 18, 116, 36, packABGR(18, 36, 88, 220));
-    drawSceneSprite(btnFatigueAdd, ftX + 44, ftY, { width: 26, height: 26 });
-    drawLabel(makeTextTex(getLabelText(ftNum, '0'), 60, 24, 18), ftX - 6, ftY, 40, 18, WHITE);
+    for (const entity of [starChest, levelChest]) {
+      if (!entity) continue;
+      const pos = getSceneWorldTransform(homeScene, entity);
+      drawSceneSprite(entity, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    for (const entity of [starChestLeft, starChestMain, levelChestLeft, levelChestMain]) {
+      if (!entity) continue;
+      const pos = getSceneWorldTransform(homeScene, entity);
+      drawSceneSprite(entity, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    for (const entity of [starProgress, levelProgress]) {
+      if (!entity) continue;
+      const pos = getSceneWorldTransform(homeScene, entity);
+      drawSceneSprite(entity, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    for (const entity of [starTips, levelTips]) {
+      if (!entity) continue;
+      const pos = getSceneWorldTransform(homeScene, entity);
+      drawSceneSprite(entity, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    const starItem1Icon = getVisibleScenePathEntity(homeScene, 'Canvas/btnHomeBoxStar/tips/Node-001/starItem1/Sprite');
+    const starItem1Label = getVisibleScenePathEntity(homeScene, 'Canvas/btnHomeBoxStar/tips/Node-001/starItem1/Label');
+    const starItem2Icon = getVisibleScenePathEntity(homeScene, 'Canvas/btnHomeBoxStar/tips/Node-001/starItem2/Sprite');
+    const starItem2Label = getVisibleScenePathEntity(homeScene, 'Canvas/btnHomeBoxStar/tips/Node-001/starItem2/Label');
+    const levelItem1Icon = getVisibleScenePathEntity(homeScene, 'Canvas/btnHomeBoxLevel/tips/Node/levelItem1/Sprite');
+    const levelItem1Label = getVisibleScenePathEntity(homeScene, 'Canvas/btnHomeBoxLevel/tips/Node/levelItem1/Label');
+    const levelItem2Icon = getVisibleScenePathEntity(homeScene, 'Canvas/btnHomeBoxLevel/tips/Node/levelItem2/Sprite');
+    const levelItem2Label = getVisibleScenePathEntity(homeScene, 'Canvas/btnHomeBoxLevel/tips/Node/levelItem2/Label');
+    for (const entity of [starItem1Icon, starItem2Icon, levelItem1Icon, levelItem2Icon]) {
+      if (!entity) continue;
+      const pos = getSceneWorldTransform(homeScene, entity);
+      drawSceneSprite(entity, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    for (const entity of [starItem1Label, starItem2Label, levelItem1Label, levelItem2Label]) {
+      if (!entity) continue;
+      const pos = getSceneWorldTransform(homeScene, entity);
+      drawSceneText(getLabelText(entity, '100'), uiToScreenX(pos.x), uiToScreenY(pos.y), 20, 12, 10, packABGR(32, 32, 32, 255));
+    }
+    if (starNum) {
+      const pos = getSceneWorldTransform(homeScene, starNum);
+      drawSceneText(getLabelText(starNum, '0/500'), uiToScreenX(pos.x), uiToScreenY(pos.y), 70, 16, 12, WHITE);
+    }
+    if (levelNum) {
+      const pos = getSceneWorldTransform(homeScene, levelNum);
+      drawSceneText(`0/${currentLevel}`, uiToScreenX(pos.x), uiToScreenY(pos.y), 70, 16, 12, WHITE);
+    }
+
+    drawSceneEntitySprite(homeScene, 'btnPropShop', { fallbackX: -305.913, fallbackY: -489.43 });
+    drawSceneEntitySprite(homeScene, 'btnShare', { fallbackX: 312.626, fallbackY: -488.216 });
+    const shopLabel = getChildSceneEntity(homeScene, '/btnPropShop', 'SHANGDIANa');
+    const shareLabel = getChildSceneEntity(homeScene, '/btnShare', '分享');
+    if (shopLabel) {
+      const pos = getSceneWorldTransform(homeScene, shopLabel);
+      drawSceneText(getLabelText(shopLabel, '商店'), uiToScreenX(pos.x), uiToScreenY(pos.y), 40, 18, 14, WHITE);
+    }
+    if (shareLabel) {
+      const pos = getSceneWorldTransform(homeScene, shareLabel);
+      drawSceneText(getLabelText(shareLabel, '分享'), uiToScreenX(pos.x), uiToScreenY(pos.y), 40, 18, 14, WHITE);
+    }
 
     const startRoot = getSceneEntity(homeScene, 'btnStartMainGame');
-    const levelShow = getSceneEntity(homeScene, 'LevelShow');
-    const startBtnSprite = getSceneEntity(homeScene, 'Btn');
-    const startTextNode = getSceneEntities(homeScene, 'txt').find((entity) => entity.parent?.endsWith('/Btn/txt')) ?? null;
-    const startSubTextNode = getSceneEntity(homeScene, 'txt-001');
-    const startCenterX = uiToScreenX(getTransformNumber(startRoot, 'x'));
-    const startCenterY = uiToScreenY(getTransformNumber(startRoot, 'y', -370.17));
-    const startBtn: Btn = { x: startCenterX - 104, y: startCenterY - 34, w: 208, h: 68, id: 'start' };
+    const levelShow = getChildSceneEntity(homeScene, '/btnStartMainGame', 'LevelShow');
+    const levelShowLabel = getChildSceneEntity(homeScene, '/btnStartMainGame/LevelShow', 'Label');
+    const startBtnSprite = getChildSceneEntity(homeScene, '/btnStartMainGame', 'Btn');
+    const startTextNode = getChildSceneEntity(homeScene, '/btnStartMainGame/Btn', 'txt');
+    const startSubTextNode = getChildSceneEntity(homeScene, '/btnStartMainGame/Btn/txt', 'txt-001');
+    const shareTag = getChildSceneEntity(homeScene, '/btnStartMainGame/Btn', 'shareTag');
+    const shipinTag = getChildSceneEntity(homeScene, '/btnStartMainGame/Btn', 'shipinTag2');
+    const startPos = getSceneWorldTransform(homeScene, startRoot);
+    const startCenterX = uiToScreenX(startPos.x);
+    const startCenterY = uiToScreenY(startPos.y || -370.17);
+    const startBtnSize = getSceneButtonRect(startBtnSprite, 208, 68);
+    const startBtn: Btn = { x: startCenterX - startBtnSize.width * 0.5, y: startCenterY - startBtnSize.height * 0.5, w: startBtnSize.width, h: startBtnSize.height, id: 'start' };
     uiButtons.push(startBtn);
-    drawSceneSprite(levelShow, startCenterX, startCenterY - 72, { width: 150, height: 50 });
-    drawLabel(makeTextTex(`第${currentLevel}关`, 90, 26, 18), startCenterX, startCenterY - 72, 76, 20, packABGR(32, 32, 32, 255));
-    drawSceneSprite(startBtnSprite, startCenterX, startCenterY + 8, { width: 188, height: 54 });
-    drawLabel(makeTextTex(getLabelText(startTextNode, '开始游戏'), 140, 34, 22), startCenterX, startCenterY + 18, 110, 26, WHITE);
-    drawLabel(makeTextTex(getLabelText(startSubTextNode, '今日次数（3/3）'), 170, 26, 14), startCenterX, startCenterY - 6, 130, 18, WHITE);
+    if (levelShow) {
+      const pos = getSceneWorldTransform(homeScene, levelShow);
+      drawSceneSprite(levelShow, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    if (levelShowLabel) {
+      const pos = getSceneWorldTransform(homeScene, levelShowLabel);
+      drawSceneText(`第${currentLevel}关`, uiToScreenX(pos.x), uiToScreenY(pos.y), 76, 18, 14, packABGR(32, 32, 32, 255));
+    }
+    if (startBtnSprite) {
+      const pos = getSceneWorldTransform(homeScene, startBtnSprite);
+      drawSceneSprite(startBtnSprite, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    if (shareTag) {
+      const pos = getSceneWorldTransform(homeScene, shareTag);
+      drawSceneSprite(shareTag, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    if (shipinTag) {
+      const pos = getSceneWorldTransform(homeScene, shipinTag);
+      drawSceneSprite(shipinTag, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    if (startTextNode) {
+      const pos = getSceneWorldTransform(homeScene, startTextNode);
+      drawSceneText(getLabelText(startTextNode, '开始游戏'), uiToScreenX(pos.x), uiToScreenY(pos.y), 110, 24, 18, WHITE);
+    }
+    if (startSubTextNode) {
+      const pos = getSceneWorldTransform(homeScene, startSubTextNode);
+      drawSceneText(getLabelText(startSubTextNode, '今日次数（3/3）'), uiToScreenX(pos.x), uiToScreenY(pos.y), 130, 18, 12, WHITE);
+    }
 
     drawNumber(Math.round(fps), W - 24, 18, 14, GRAY);
-
     batcher.end();
   }
 
@@ -1010,16 +1281,26 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
 
     const playBot = PLAY_BOT();
 
+    const bottomRoot = getSceneEntity(mainGameScene, 'bottom');
+    const bottomY = uiToScreenY(getTransformNumber(bottomRoot, 'y', -582));
+
     // Slot area background
     drawRect(0, playBot, W, SLOT_H, SLOT_BG);
     drawRect(0, playBot, W, 2, packABGR(71,85,105,255));
 
     // Slot markers
     for (let i = 0; i < MAX_SLOT; i++) {
+      const frame = getSceneEntities(mainGameScene, 'TileIn')[i] ?? null;
       const sx = slotTargetX(i) - TILE_W/2;
-      const sy = slotTargetY() - TILE_H/2;
-      drawRect(sx-2, sy-2, TILE_W+4, TILE_H+4, packABGR(51,65,85,255));
-      drawRect(sx, sy, TILE_W, TILE_H, packABGR(24,34,52,255));
+      const sy = slotTargetY(i) - TILE_H/2;
+      if (frame) {
+        drawSceneSprite(frame, slotTargetX(i), slotTargetY(i));
+        const ring0 = getVisibleScenePathEntity(mainGameScene, `Canvas/select/TileIn${i === 0 ? '' : `:${i}`}/e${i}/ring0`) ?? getVisibleScenePathEntity(mainGameScene, `Canvas/select/TileIn/e${i}/ring0`);
+        if (ring0) drawSceneSprite(ring0, slotTargetX(i), slotTargetY(i), { tint: packABGR(180, 190, 210, 120) });
+      } else {
+        drawRect(sx-2, sy-2, TILE_W+4, TILE_H+4, packABGR(51,65,85,255));
+        drawRect(sx, sy, TILE_W, TILE_H, packABGR(24,34,52,255));
+      }
     }
 
     // Slot tiles
@@ -1031,36 +1312,70 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
       drawTile(t.id, t.x, t.y, alpha, 0, scale);
     }
 
-    // Prop buttons (above slot) — icons drawn with drawRect/batcher
-    const pby = propBtnY();
+    // Imported bottom bar and prop buttons
+    drawRect(0, bottomY - 54, W, 108, packABGR(5, 10, 18, 220));
     for (let i = 0; i < PROP_BTNS.length; i++) {
-      const pb = PROP_BTNS[i];
-      const pbx = propBtnX(i);
-      const count = (props as any)[pb.key] as number;
-      const color = count > 0 ? packABGR(37, 99, 235, 255) : GRAY;
-      drawRect(pbx, pby, PROP_BTN_W, PROP_BTN_H, color);
-      const ic = packABGR(255, 255, 255, count > 0 ? 230 : 110);
-      drawLabel(lblProp[i], pbx + PROP_BTN_W / 2, pby + PROP_BTN_H * 0.62, PROP_BTN_W - 2, 19, ic);
-      if (count > 0) drawNumber(count, pbx + PROP_BTN_W - 8, pby + 5, 13, YELLOW);
+      const buttonName = ['b1', 'b3', 'b4', 'b2'][i];
+      const buttonEntity = getSceneEntity(mainGameScene, buttonName);
+      const iconEntity = getChildSceneEntity(mainGameScene, `/bottom/${buttonName}`, 'Icon');
+      const labelEntity = getChildSceneEntity(mainGameScene, `/bottom/${buttonName}`, 'Label');
+      const counterFrame = getChildSceneEntity(mainGameScene, `/bottom/${buttonName}`, '道具计数框');
+      const counterLabel = getChildSceneEntity(mainGameScene, `/bottom/${buttonName}`, `PropNum${i + 1}`);
+      const anchor = propBtnAnchor(i);
+      const count = (props as any)[PROP_BTNS[i].key] as number;
+      const tint = count > 0 ? WHITE : packABGR(140, 148, 163, 190);
+      drawSceneSprite(buttonEntity, anchor.x, anchor.y, { tint });
+      drawSceneSprite(iconEntity, anchor.x - 40, anchor.y + 10, { tint });
+      drawSceneText(getLabelText(labelEntity, PROP_BTNS[i].label), anchor.x + 22, anchor.y + 10, 44, 18, 14, WHITE);
+      drawSceneSprite(counterFrame, anchor.x + 34, anchor.y + 24);
+      const addEntity = getChildSceneEntity(mainGameScene, `/bottom/${buttonName}`, `add${i + 1}`);
+      if (addEntity) drawSceneSprite(addEntity, anchor.x + 35, anchor.y + 24);
+      drawSceneText(String(count), anchor.x + 34, anchor.y + 24, 20, 16, 12, YELLOW);
     }
 
-    // HUD (top bar)
-    drawRect(0, 0, W, HUD_H, packABGR(15,23,42,255));
-    drawRect(0, HUD_H-2, W, 2, packABGR(30,58,138,255));
+    // Imported top HUD
+    drawRect(0, 0, W, HUD_H + 8, packABGR(10, 18, 34, 210));
+    drawSceneEntitySprite(mainGameScene, 'btnMainGamePause', { fallbackX: -293, fallbackY: 510 });
+    drawSceneEntitySprite(mainGameScene, 'LevelTimer', { fallbackY: 509.3395 });
 
-    const timerColor = timerSec > 30 ? WHITE : timerSec > 10 ? YELLOW : RED;
-    drawNumber(timerSec, W/2, HUD_H/2, 28, timerColor);
+    const levelLabel = getVisibleScenePathEntity(mainGameScene, 'Canvas/LevelTimer/Node/curretLevelLabel') ?? getSceneEntity(mainGameScene, 'curretLevelLabel');
+    const timerNum = getVisibleScenePathEntity(mainGameScene, 'Canvas/LevelTimer/Node/timer/TimerNum') ?? getSceneEntity(mainGameScene, 'TimerNum');
+    const remainLabel = getVisibleScenePathEntity(mainGameScene, 'Canvas/LevelTimer/remain') ?? getSceneEntity(mainGameScene, 'remain');
+    const startIcon = getVisibleScenePathEntity(mainGameScene, 'Canvas/Start/StartIcon') ?? getSceneEntity(mainGameScene, 'StartIcon');
+    const startNum = getVisibleScenePathEntity(mainGameScene, 'Canvas/Start/StartNum') ?? getSceneEntity(mainGameScene, 'StartNum');
+    const tipButton = getVisibleScenePathEntity(mainGameScene, 'Canvas/tipNode/yellow_button11') ?? getSceneEntity(mainGameScene, 'yellow_button11');
+    const tipText = getVisibleScenePathEntity(mainGameScene, 'Canvas/tipNode/txt') ?? getSceneEntity(mainGameScene, 'txt');
+    const tipFinger = getVisibleScenePathEntity(mainGameScene, 'Canvas/tipNode/figer') ?? getSceneEntity(mainGameScene, 'figer');
+    const timerCenterX = W * 0.5;
+    const timerCenterY = 36;
 
-    const timerRatio = cfg ? timerSec/cfg.Time : 1;
+    const levelLabelPos = getSceneWorldTransform(mainGameScene, levelLabel);
+    const timerNumPos = getSceneWorldTransform(mainGameScene, timerNum);
+    const remainLabelPos = getSceneWorldTransform(mainGameScene, remainLabel);
+    drawSceneText(`第${currentLevel}关`, uiToScreenX(levelLabelPos.x), uiToScreenY(levelLabelPos.y), 60, 18, 14, WHITE);
+    drawSceneText(formatTimerLabel(timerSec), uiToScreenX(timerNumPos.x), uiToScreenY(timerNumPos.y), 72, 22, 18, timerSec > 30 ? WHITE : timerSec > 10 ? YELLOW : RED);
+
+    const remainCount = worldTiles.length;
+    drawSceneText(`剩余：${remainCount}`, uiToScreenX(remainLabelPos.x), uiToScreenY(remainLabelPos.y), 84, 18, 12, packABGR(226, 232, 240, 255));
+
+    const timerRatio = cfg ? timerSec / cfg.Time : 1;
     const barColor = timerSec > 30 ? GREEN : timerSec > 10 ? YELLOW : RED;
-    drawRect(0, HUD_H-6, W, 4, packABGR(30,41,59,255));
-    drawRect(0, HUD_H-6, Math.round(W*timerRatio), 4, barColor);
+    drawRect(timerCenterX - 86, 62, 172, 4, packABGR(30,41,59,255));
+    drawRect(timerCenterX - 86, 62, Math.round(172 * timerRatio), 4, barColor);
 
-    drawNumber(currentLevel, 30, HUD_H/2, 20, packABGR(148,163,184,255));
+    const startIconPos = getSceneWorldTransform(mainGameScene, startIcon);
+    const startNumPos = getSceneWorldTransform(mainGameScene, startNum);
+    drawSceneSprite(startIcon, uiToScreenX(startIconPos.x), uiToScreenY(startIconPos.y));
+    drawSceneText(String(Math.max(0, totalGroups - matchedGroups)), uiToScreenX(startNumPos.x), uiToScreenY(startNumPos.y), 24, 18, 12, YELLOW);
 
-    const prog2 = totalGroups > 0 ? matchedGroups/totalGroups : 0;
-    drawRect(W-54, 8, 50, 16, packABGR(30,41,59,255));
-    drawRect(W-54, 8, Math.round(50*prog2), 16, GREEN);
+    if (slotTiles.length === 0 && !gameEnded && tipButton && tipText && tipFinger) {
+      const buttonPos = getSceneWorldTransform(mainGameScene, tipButton);
+      const textPos = getSceneWorldTransform(mainGameScene, tipText);
+      const fingerPos = getSceneWorldTransform(mainGameScene, tipFinger);
+      drawSceneSprite(tipButton, uiToScreenX(buttonPos.x), uiToScreenY(buttonPos.y));
+      drawSceneText(getLabelText(tipText, '点击三张相同的牌进行消除'), uiToScreenX(textPos.x), uiToScreenY(textPos.y), 220, 20, 12, WHITE);
+      drawSceneSprite(tipFinger, uiToScreenX(fingerPos.x), uiToScreenY(fingerPos.y));
+    }
 
     batcher.end();
   }
@@ -1072,37 +1387,48 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     batcher.begin(proj);
     drawRect(0, 0, W, H, packABGR(0, 0, 0, 170));
 
-    const cx = W/2, cy = H/2;
+    const mask = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/mask');
+    const viewRoot = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View');
+    const cardRoot = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View/card');
+    const panelBg = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View/card/bg');
+    const panelIcon = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View/card/icon');
+    const panelTitle = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View/card/title');
+    const panelDesc = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View/card/desc');
+    const closeX = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View/card/Node/x');
+    const adBtnSprite = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View/ad');
+    const shareBtnSprite = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View/share');
+    const viewPos = getSceneWorldTransform(mainGameScene, viewRoot);
+    const cardPos = getSceneWorldTransform(mainGameScene, cardRoot);
 
-    // Panel with gold border
-    drawRect(cx-144, cy-134, 288, 268, packABGR(10, 20, 60, 255));
-    drawRect(cx-140, cy-130, 280, 260, packABGR(30, 58, 138, 255));
-    drawRect(cx-140, cy-130, 280,   4, YELLOW);
-    drawRect(cx-140, cy+126, 280,   4, YELLOW);
-    drawRect(cx-140, cy-130,   4, 260, YELLOW);
-    drawRect(cx+136, cy-130,   4, 260, YELLOW);
-
-    // Three star diamonds
-    const starCols = [cx-60, cx, cx+60];
-    for (const sx of starCols) {
-      const r = 18, ri = 7, sy = cy - 100;
-      batcher.draw(whiteTex, sx-r,  sy-r,  2*r,  2*r,  Math.PI/4, 0,0,1,1, YELLOW);
-      batcher.draw(whiteTex, sx-ri, sy-ri, 2*ri, 2*ri, Math.PI/4, 0,0,1,1, WHITE);
+    if (mask) drawSceneSprite(mask, W * 0.5, H * 0.5, { width: W, height: H });
+    if (panelBg) drawSceneSprite(panelBg, uiToScreenX(cardPos.x), uiToScreenY(cardPos.y));
+    if (panelIcon) {
+      const pos = getSceneWorldTransform(mainGameScene, panelIcon);
+      drawSceneSprite(panelIcon, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
+    if (panelTitle) {
+      const pos = getSceneWorldTransform(mainGameScene, panelTitle);
+      drawSceneText('过关成功', uiToScreenX(pos.x), uiToScreenY(pos.y), 120, 28, 22, WHITE);
+    }
+    if (panelDesc) {
+      const pos = getSceneWorldTransform(mainGameScene, panelDesc);
+      drawSceneText(`第${currentLevel - 1}关完成`, uiToScreenX(pos.x), uiToScreenY(pos.y), 180, 42, 16, packABGR(226, 232, 240, 255));
+    }
+    if (closeX) {
+      const pos = getSceneWorldTransform(mainGameScene, closeX);
+      drawSceneSprite(closeX, uiToScreenX(pos.x), uiToScreenY(pos.y));
     }
 
-    // Completed level number (large)
-    drawNumber(currentLevel - 1, cx, cy - 32, 46, YELLOW);
-
-    // Separator
-    drawRect(cx-100, cy+18, 200, 2, packABGR(59, 130, 246, 200));
-
-    // Next level button
-    const nextBtn: Btn = { x: cx-90, y: cy+30, w: 180, h: 58, id: 'next' };
+    const nextBtnPos = getSceneWorldTransform(mainGameScene, adBtnSprite);
+    const nextBtnSize = getSceneButtonRect(adBtnSprite, 204, 56);
+    const nextBtn: Btn = { x: uiToScreenX(nextBtnPos.x) - nextBtnSize.width * 0.5, y: uiToScreenY(nextBtnPos.y) - nextBtnSize.height * 0.5, w: nextBtnSize.width, h: nextBtnSize.height, id: 'next' };
     uiButtons.push(nextBtn);
-    drawRect(nextBtn.x + 3, nextBtn.y + 4, nextBtn.w, nextBtn.h, SHADOW);
-    drawRect(nextBtn.x, nextBtn.y, nextBtn.w, nextBtn.h, GREEN);
-    drawLabel(lblNext, nextBtn.x + nextBtn.w * 0.40, nextBtn.y + nextBtn.h / 2, 110, 36, WHITE);
-    drawNumber(currentLevel, nextBtn.x + nextBtn.w * 0.80, nextBtn.y + nextBtn.h / 2, 28, YELLOW);
+    if (adBtnSprite) drawSceneSprite(adBtnSprite, uiToScreenX(nextBtnPos.x), uiToScreenY(nextBtnPos.y));
+    if (shareBtnSprite) {
+      const pos = getSceneWorldTransform(mainGameScene, shareBtnSprite);
+      drawSceneSprite(shareBtnSprite, uiToScreenX(pos.x), uiToScreenY(pos.y), { tint: packABGR(148, 163, 184, 220) });
+    }
+    drawSceneText('下一关', uiToScreenX(nextBtnPos.x), uiToScreenY(nextBtnPos.y), 110, 24, 18, WHITE);
 
     batcher.end();
   }
@@ -1114,34 +1440,37 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     batcher.begin(proj);
     drawRect(0, 0, W, H, packABGR(0, 0, 0, 170));
 
-    const cx = W/2, cy = H/2;
+    const mask = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/mask');
+    const viewRoot = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View');
+    const cardRoot = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View/card');
+    const panelBg = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View/card/bg');
+    const panelTitle = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View/card/title');
+    const panelDesc = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View/card/desc');
+    const closeX = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View/card/Node/x');
+    const shareBtnSprite = getVisibleScenePathEntity(mainGameScene, 'Canvas/propTip/View/share');
+    const cardPos = getSceneWorldTransform(mainGameScene, cardRoot);
 
-    // Panel with red border
-    drawRect(cx-144, cy-124, 288, 248, packABGR(30, 5, 5, 255));
-    drawRect(cx-140, cy-120, 280, 240, packABGR(100, 20, 20, 255));
-    drawRect(cx-140, cy-120, 280,   4, RED);
-    drawRect(cx-140, cy+116, 280,   4, RED);
-    drawRect(cx-140, cy-120,   4, 240, RED);
-    drawRect(cx+136, cy-120,   4, 240, RED);
+    if (mask) drawSceneSprite(mask, W * 0.5, H * 0.5, { width: W, height: H });
+    if (panelBg) drawSceneSprite(panelBg, uiToScreenX(cardPos.x), uiToScreenY(cardPos.y), { tint: packABGR(255, 180, 180, 255) });
+    if (panelTitle) {
+      const pos = getSceneWorldTransform(mainGameScene, panelTitle);
+      drawSceneText('挑战失败', uiToScreenX(pos.x), uiToScreenY(pos.y), 120, 28, 22, WHITE);
+    }
+    if (panelDesc) {
+      const pos = getSceneWorldTransform(mainGameScene, panelDesc);
+      drawSceneText(`第${currentLevel}关未完成`, uiToScreenX(pos.x), uiToScreenY(pos.y), 200, 42, 16, packABGR(254, 226, 226, 255));
+    }
+    if (closeX) {
+      const pos = getSceneWorldTransform(mainGameScene, closeX);
+      drawSceneSprite(closeX, uiToScreenX(pos.x), uiToScreenY(pos.y));
+    }
 
-    // X mark: two diagonal bars (rotated ±45°)
-    const xc = cx, xyc = cy - 62, r3 = 22;
-    batcher.draw(whiteTex, xc-r3, xyc-4, 2*r3, 8,  Math.PI/4, 0,0,1,1, RED);
-    batcher.draw(whiteTex, xc-r3, xyc-4, 2*r3, 8, -Math.PI/4, 0,0,1,1, RED);
-
-    // Level number
-    drawNumber(currentLevel, cx, cy - 12, 40, packABGR(255, 100, 100, 255));
-
-    // Separator
-    drawRect(cx-100, cy+24, 200, 2, packABGR(200, 50, 50, 200));
-
-    // Retry button
-    const retryBtn: Btn = { x: cx-90, y: cy+34, w: 180, h: 58, id: 'retry' };
+    const retryBtnPos = getSceneWorldTransform(mainGameScene, shareBtnSprite);
+    const retryBtnSize = getSceneButtonRect(shareBtnSprite, 204, 56);
+    const retryBtn: Btn = { x: uiToScreenX(retryBtnPos.x) - retryBtnSize.width * 0.5, y: uiToScreenY(retryBtnPos.y) - retryBtnSize.height * 0.5, w: retryBtnSize.width, h: retryBtnSize.height, id: 'retry' };
     uiButtons.push(retryBtn);
-    drawRect(retryBtn.x + 3, retryBtn.y + 4, retryBtn.w, retryBtn.h, SHADOW);
-    drawRect(retryBtn.x, retryBtn.y, retryBtn.w, retryBtn.h, packABGR(220, 38, 38, 255));
-    drawLabel(lblRetry, retryBtn.x + retryBtn.w * 0.38, retryBtn.y + retryBtn.h / 2, 96, 36, WHITE);
-    drawNumber(currentLevel, retryBtn.x + retryBtn.w * 0.78, retryBtn.y + retryBtn.h / 2, 26, YELLOW);
+    if (shareBtnSprite) drawSceneSprite(shareBtnSprite, uiToScreenX(retryBtnPos.x), uiToScreenY(retryBtnPos.y), { tint: packABGR(248, 113, 113, 255) });
+    drawSceneText('重试', uiToScreenX(retryBtnPos.x), uiToScreenY(retryBtnPos.y), 96, 24, 18, WHITE);
 
     batcher.end();
   }
@@ -1166,10 +1495,13 @@ import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from
     loadLevel();
     setupAudio();
     loadTileAtlas(() => {
+      loadingProgress = 0.35;
       setupTouch();
       requestFrame(render);
       state.summary = 'running';
       log('game running, level=', currentLevel);
+      loadingProgress = 1;
+      scene = 'home';
     });
   }
 
