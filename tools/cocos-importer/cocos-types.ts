@@ -91,11 +91,46 @@ export interface CocosSpriteData extends CocosSerializedObject {
 export interface CocosCameraData extends CocosSerializedObject {
   __type__: 'cc.Camera';
   node: CocosRef;
-  _projection: number;
+  _projection: number;  // 0=orthographic, 1=perspective
+  _fov?: number;
   _orthoHeight?: number;
   _near?: number;
   _far?: number;
   _color?: CocosColor;
+}
+
+export interface CocosLabelData extends CocosSerializedObject {
+  __type__: 'cc.Label';
+  node: CocosRef;
+  _string?: string;
+  _fontSize?: number;
+  _lineHeight?: number;
+  _horizontalAlign?: number;
+  _verticalAlign?: number;
+  _color?: CocosColor;
+  _enableWrapText?: boolean;
+}
+
+export interface CocosDirectionalLightData extends CocosSerializedObject {
+  __type__: 'cc.DirectionalLight';
+  node: CocosRef;
+  _color?: CocosColor;
+  _illuminance?: number;
+}
+
+export interface CocosButtonData extends CocosSerializedObject {
+  __type__: 'cc.Button';
+  node: CocosRef;
+  interactable?: boolean;
+}
+
+export interface CocosProgressBarData extends CocosSerializedObject {
+  __type__: 'cc.ProgressBar';
+  node: CocosRef;
+  totalLength?: number;
+  progress?: number;
+  mode?: number;
+  reverse?: boolean;
 }
 
 export function isCocosRef(v: unknown): v is CocosRef {

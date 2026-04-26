@@ -105,8 +105,8 @@ function validateBuiltinComponents(
 
   if (comps.Camera) {
     const c = comps.Camera as Record<string, unknown>;
-    if (c.mode !== undefined && c.mode !== 'orthographic') {
-      errors.push(err(`${base}.components.Camera.mode`, 'must be "orthographic"'));
+    if (c.mode !== undefined && c.mode !== 'orthographic' && c.mode !== 'perspective') {
+      errors.push(err(`${base}.components.Camera.mode`, 'must be "orthographic" or "perspective"'));
     }
     if (c.clearColor !== undefined && (typeof c.clearColor !== 'string' || !COLOR_PATTERN.test(c.clearColor))) {
       errors.push(err(`${base}.components.Camera.clearColor`, 'must be #RRGGBBAA format'));

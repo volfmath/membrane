@@ -1,4 +1,5 @@
 declare const module: any;
+declare const require: any;
 declare const wx: any;
 declare const globalThis: any;
 
@@ -11,6 +12,7 @@ import { Mat4 } from './math/mat4';
 import { TILE_UV } from './mahjong/tile-atlas-data';
 import { LevelConfs, LevelLoopMin, buildTilePool, shuffle, ILevelConfig } from './mahjong/level-configs';
 import { TILE_VERTS, TILE_INDICES } from './mahjong/tile-mesh-data';
+import type { CompiledSceneData, CompiledFixtureData, CompiledSpriteFrame } from './canonical/loader-types';
 
 (function mahjongGame(): void {
   const TAG = '[MJ]';
@@ -76,6 +78,9 @@ import { TILE_VERTS, TILE_INDICES } from './mahjong/tile-mesh-data';
   let lblNext:   WebGLTexture | null = null;
   let lblRetry:  WebGLTexture | null = null;
   const lblProp: (WebGLTexture | null)[] = [null, null, null, null];
+  let fixtureData: CompiledFixtureData | null = null;
+  let spriteFrameMap: Record<string, CompiledSpriteFrame> = {};
+  const spriteTexCache = new Map<string, WebGLTexture | null>();
 
   // ─── 3D Setup ─────────────────────────────────────────────────────────────
   function computeVP(): void {
@@ -241,6 +246,26 @@ import { TILE_VERTS, TILE_INDICES } from './mahjong/tile-mesh-data';
     removeT: number;
   }
 
+  interface RuntimeSceneEntity {
+    id: string;
+    name: string;
+    parent: string | null;
+    enabled: boolean;
+    components: Record<string, Record<string, unknown>> & {
+      Transform?: Record<string, unknown>;
+      Sprite?: { atlas?: string; frame?: string; color?: string };
+      Label?: { text?: string; color?: string };
+      Button?: Record<string, unknown>;
+      ProgressBar?: { progress?: number };
+    };
+  }
+
+  interface RuntimeSceneView {
+    sceneId: string;
+    entities: RuntimeSceneEntity[];
+    byName: Map<string, RuntimeSceneEntity[]>;
+  }
+
   let scene: Scene = 'home';
   let currentLevel = 1;
   let cfg: ILevelConfig;
@@ -252,8 +277,124 @@ import { TILE_VERTS, TILE_INDICES } from './mahjong/tile-mesh-data';
   let totalGroups = 0;
   let gameEnded = false;
   let tapEnabled = true;
+  let fixtureScenes: CompiledSceneData[] = [];
+  let homeScene: RuntimeSceneView | null = null;
+  let loadingScene: RuntimeSceneView | null = null;
 
   const props = { xiPai: 1, yiChu: 1, xiaochu: 1, shiZhong: 1 };
+
+  function loadFixtureScenes(): void {
+    try {
+      const fixture = require('../assets/scene-data') as CompiledFixtureData;
+      fixtureData = fixture;
+      fixtureScenes = Array.isArray(fixture?.scenes) ? fixture.scenes : [];
+      spriteFrameMap = fixture?.spriteFrames ?? {};
+      homeScene = buildRuntimeSceneView('Home');
+      loadingScene = buildRuntimeSceneView('Loading');
+      log('fixture scenes', fixtureScenes.length, 'sprites=', Object.keys(spriteFrameMap).length, 'home=', !!homeScene, 'loading=', !!loadingScene);
+    } catch (e: any) {
+      warn('fixture load failed', e?.message ?? e);
+      fixtureData = null;
+      fixtureScenes = [];
+      spriteFrameMap = {};
+      homeScene = null;
+      loadingScene = null;
+    }
+  }
+
+  function buildRuntimeSceneView(sceneId: string): RuntimeSceneView | null {
+    const raw = fixtureScenes.find((s) => s.sceneId === sceneId);
+    if (!raw) return null;
+    const entities = raw.entities as RuntimeSceneEntity[];
+    const byName = new Map<string, RuntimeSceneEntity[]>();
+    for (const entity of entities) {
+      const list = byName.get(entity.name) ?? [];
+      list.push(entity);
+      byName.set(entity.name, list);
+    }
+    return { sceneId, entities, byName };
+  }
+
+  function getSceneEntities(view: RuntimeSceneView | null, name: string): RuntimeSceneEntity[] {
+    return view?.byName.get(name) ?? [];
+  }
+
+  function getSceneEntity(view: RuntimeSceneView | null, name: string): RuntimeSceneEntity | null {
+    const list = getSceneEntities(view, name);
+    return list.length > 0 ? list[0] : null;
+  }
+
+  function getTransformNumber(entity: RuntimeSceneEntity | null, key: string, fallback = 0): number {
+    const value = entity?.components?.Transform?.[key];
+    return typeof value === 'number' ? value : fallback;
+  }
+
+  function getLabelText(entity: RuntimeSceneEntity | null, fallback = ''): string {
+    const value = entity?.components?.Label?.text;
+    return typeof value === 'string' ? value : fallback;
+  }
+
+  function uiToScreenX(x: number): number {
+    return W * 0.5 + x;
+  }
+
+  function uiToScreenY(y: number): number {
+    return H * 0.5 - y;
+  }
+
+  function parseHexColor(hex: string | undefined, fallback: number): number {
+    if (!hex || !/^#[0-9A-Fa-f]{8}$/.test(hex)) return fallback;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    const a = parseInt(hex.slice(7, 9), 16);
+    return packABGR(r, g, b, a);
+  }
+
+  function getSpriteFrame(entity: RuntimeSceneEntity | null): CompiledSpriteFrame | null {
+    const atlas = entity?.components?.Sprite?.atlas;
+    const frame = entity?.components?.Sprite?.frame;
+    if (!atlas || !frame || atlas === 'unknown' || frame === 'unknown') return null;
+    return spriteFrameMap[`${atlas}@${frame}`] ?? null;
+  }
+
+  function ensureSpriteTexture(imagePath: string): WebGLTexture | null {
+    const cached = spriteTexCache.get(imagePath);
+    if (cached !== undefined) return cached;
+    try {
+      const img = wx.createImage();
+      const tex = device.createTexture();
+      img.onload = () => {
+        const gl = device.gl;
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      };
+      img.onerror = (e: any) => warn('sprite image err', imagePath, e?.errMsg ?? e);
+      img.src = imagePath;
+      spriteTexCache.set(imagePath, tex);
+      return tex;
+    } catch (e) {
+      warn('sprite texture fail', imagePath, e);
+      spriteTexCache.set(imagePath, null);
+      return null;
+    }
+  }
+
+  function drawSceneSprite(entity: RuntimeSceneEntity | null, x: number, y: number, opts?: { width?: number; height?: number; tint?: number }): void {
+    if (!entity) return;
+    const frame = getSpriteFrame(entity);
+    if (!frame) return;
+    const tex = ensureSpriteTexture(frame.image);
+    if (!tex) return;
+    const w = opts?.width ?? frame.originalSize.width;
+    const h = opts?.height ?? frame.originalSize.height;
+    const tint = opts?.tint ?? parseHexColor(entity.components.Sprite?.color, WHITE);
+    batcher.draw(tex, x - w * 0.5, y - h * 0.5, w, h, 0, 0, 0, 1, 1, tint);
+  }
 
   function saveLevel(): void {
     try { if (wx.setStorageSync) wx.setStorageSync('mj_level', currentLevel); } catch (e) {}
@@ -775,51 +916,86 @@ import { TILE_VERTS, TILE_INDICES } from './mahjong/tile-mesh-data';
 
     drawRect(0, 0, W, H, packABGR(8, 15, 30, 255));
 
-    // Header band
-    drawRect(0, 0, W, 88, packABGR(10, 24, 60, 255));
-    drawRect(0, 86, W, 2, packABGR(59, 130, 246, 180));
+    drawSceneSprite(getSceneEntity(homeScene, 'mjbg.png'), W * 0.5, H * 0.5, { width: W, height: H });
+    drawSceneSprite(getSceneEntity(homeScene, 'Logo'), W * 0.5, 112, { width: 170, height: 74 });
 
-    // Sample tiles: 4 cols × 2 rows, centered
+    const sideSpriteNames = ['btnMission', 'btnLuckilyBox', 'btnSaveGold', 'btnGameClub', 'btnRank', 'btnInvateFriend'];
+    for (const name of sideSpriteNames) {
+      const entity = getSceneEntity(homeScene, name);
+      if (!entity) continue;
+      drawSceneSprite(entity, uiToScreenX(getTransformNumber(entity, 'x')), uiToScreenY(getTransformNumber(entity, 'y')), { width: 84, height: 84 });
+    }
+
+    drawSceneSprite(getSceneEntity(homeScene, 'btnPropShop'), 48, H - 110, { width: 82, height: 82 });
+    drawSceneSprite(getSceneEntity(homeScene, 'btnShare'), W - 48, H - 110, { width: 82, height: 82 });
+
+    const topBar = getSceneEntity(homeScene, 'Top');
+    const topY = uiToScreenY(getTransformNumber(topBar, 'y', 640));
+    drawRect(0, 0, W, Math.max(88, topY + 120), packABGR(16, 35, 85, 160));
+
     const sampleIds = [1, 11, 21, 31, 41, 51, 61, 71];
-    const tScale = 1.25;
-    const tw = TILE_W * tScale, th = TILE_H * tScale;
+    const contentLeft = 72;
+    const contentRight = W - 72;
+    const tileAreaW = contentRight - contentLeft;
+    const cols = 4;
     const gap = 10;
-    const gridW = 4 * tw + 3 * gap;
-    const ox = (W - gridW) / 2 + tw / 2;
-    const oy = 136 + th / 2;
+    const tileScale = Math.min(1.05, (tileAreaW - gap * (cols - 1)) / (cols * TILE_W));
+    const tw = TILE_W * tileScale;
+    const th = TILE_H * tileScale;
+    const gridW = cols * tw + (cols - 1) * gap;
+    const ox = contentLeft + (tileAreaW - gridW) * 0.5 + tw * 0.5;
+    const oy = 146 + th * 0.5;
     for (let i = 0; i < sampleIds.length; i++) {
-      const col = i % 4, row = Math.floor(i / 4);
+      const col = i % cols;
+      const row = (i / cols) | 0;
       const x = ox + col * (tw + gap);
       const y = oy + row * (th + gap);
       drawRect(x - tw/2 + TILE_SHADOW, y - th/2 + TILE_SHADOW, tw, th, SHADOW);
-      drawTile(sampleIds[i], x, y, 1, 0, tScale);
+      drawTile(sampleIds[i], x, y, 1, 0, tileScale);
     }
 
-    // Three gold diamond stars
-    const starY = H * 0.59;
-    for (let s = -1; s <= 1; s++) {
-      const sx = W/2 + s * 68, r = 14;
-      batcher.draw(whiteTex, sx-r, starY-r, 2*r, 2*r, Math.PI/4, 0,0,1,1, YELLOW);
-      const ri = 6;
-      batcher.draw(whiteTex, sx-ri, starY-ri, 2*ri, 2*ri, Math.PI/4, 0,0,1,1, WHITE);
-    }
+    const starChest = getSceneEntity(homeScene, 'btnHomeBoxStar');
+    const levelChest = getSceneEntity(homeScene, 'btnHomeBoxLevel');
+    const starNum = getSceneEntity(homeScene, 'starNum');
+    const levelNum = getSceneEntity(homeScene, 'levelNum');
+    drawSceneSprite(starChest, W * 0.5, uiToScreenY(getTransformNumber(starChest, 'y', -16.12)), { width: 220, height: 92 });
+    drawSceneSprite(levelChest, W * 0.5, uiToScreenY(getTransformNumber(levelChest, 'y', -170)), { width: 220, height: 92 });
+    drawLabel(makeTextTex(getLabelText(starNum, '0/500'), 100, 28, 18), W * 0.5 + 32, uiToScreenY(getTransformNumber(starChest, 'y', -16.12)) + 10, 76, 20, WHITE);
+    drawLabel(makeTextTex(getLabelText(levelNum, `0/${currentLevel}`), 100, 28, 18), W * 0.5 + 32, uiToScreenY(getTransformNumber(levelChest, 'y', -170)) + 10, 76, 20, WHITE);
 
-    // Level box
-    const lvY = H * 0.62;
-    drawRect(W/2 - 130, lvY,     260, 64, packABGR(10, 20, 50, 255));
-    drawRect(W/2 - 128, lvY + 2, 256, 60, packABGR(30, 58, 138, 255));
-    drawNumber(currentLevel, W/2, lvY + 32, 32, YELLOW);
+    const goldRoot = getSceneEntity(homeScene, 'GoldNum');
+    const ftRoot = getSceneEntity(homeScene, 'FatigueNum');
+    const btnGoldAdd = getSceneEntity(homeScene, 'btnGoldAdd');
+    const btnFatigueAdd = getSceneEntity(homeScene, 'btnFatigueAdd');
+    const goldNum = getSceneEntity(homeScene, 'goldNumLabel');
+    const ftNum = getSceneEntity(homeScene, 'ftNumLabel');
+    const goldX = uiToScreenX(getTransformNumber(goldRoot, 'x', -133.002));
+    const goldY = uiToScreenY(getTransformNumber(goldRoot, 'y', 513.23));
+    const ftX = uiToScreenX(getTransformNumber(ftRoot, 'x', 72.349));
+    const ftY = uiToScreenY(getTransformNumber(ftRoot, 'y', 513.23));
+    drawRect(goldX - 58, goldY - 18, 116, 36, packABGR(18, 36, 88, 220));
+    drawSceneSprite(btnGoldAdd, goldX + 44, goldY, { width: 26, height: 26 });
+    drawLabel(makeTextTex(getLabelText(goldNum, '0'), 60, 24, 18), goldX - 6, goldY, 40, 18, WHITE);
+    drawRect(ftX - 58, ftY - 18, 116, 36, packABGR(18, 36, 88, 220));
+    drawSceneSprite(btnFatigueAdd, ftX + 44, ftY, { width: 26, height: 26 });
+    drawLabel(makeTextTex(getLabelText(ftNum, '0'), 60, 24, 18), ftX - 6, ftY, 40, 18, WHITE);
 
-    // Start button
-    const startBtn: Btn = { x: W/2 - 90, y: H * 0.76, w: 180, h: 58, id: 'start' };
+    const startRoot = getSceneEntity(homeScene, 'btnStartMainGame');
+    const levelShow = getSceneEntity(homeScene, 'LevelShow');
+    const startBtnSprite = getSceneEntity(homeScene, 'Btn');
+    const startTextNode = getSceneEntities(homeScene, 'txt').find((entity) => entity.parent?.endsWith('/Btn/txt')) ?? null;
+    const startSubTextNode = getSceneEntity(homeScene, 'txt-001');
+    const startCenterX = uiToScreenX(getTransformNumber(startRoot, 'x'));
+    const startCenterY = uiToScreenY(getTransformNumber(startRoot, 'y', -370.17));
+    const startBtn: Btn = { x: startCenterX - 104, y: startCenterY - 34, w: 208, h: 68, id: 'start' };
     uiButtons.push(startBtn);
-    drawRect(startBtn.x + 3, startBtn.y + 4, startBtn.w, startBtn.h, SHADOW);
-    drawRect(startBtn.x, startBtn.y, startBtn.w, startBtn.h, GREEN);
-    drawLabel(lblStart, startBtn.x + startBtn.w * 0.38, startBtn.y + startBtn.h / 2, 96, 36, WHITE);
-    drawNumber(currentLevel, startBtn.x + startBtn.w * 0.78, startBtn.y + startBtn.h / 2, 26, YELLOW);
+    drawSceneSprite(levelShow, startCenterX, startCenterY - 72, { width: 150, height: 50 });
+    drawLabel(makeTextTex(`第${currentLevel}关`, 90, 26, 18), startCenterX, startCenterY - 72, 76, 20, packABGR(32, 32, 32, 255));
+    drawSceneSprite(startBtnSprite, startCenterX, startCenterY + 8, { width: 188, height: 54 });
+    drawLabel(makeTextTex(getLabelText(startTextNode, '开始游戏'), 140, 34, 22), startCenterX, startCenterY + 18, 110, 26, WHITE);
+    drawLabel(makeTextTex(getLabelText(startSubTextNode, '今日次数（3/3）'), 170, 26, 14), startCenterX, startCenterY - 6, 130, 18, WHITE);
 
-    // FPS
-    drawNumber(Math.round(fps), W - 28, H - 16, 14, GRAY);
+    drawNumber(Math.round(fps), W - 24, 18, 14, GRAY);
 
     batcher.end();
   }
@@ -986,6 +1162,7 @@ import { TILE_VERTS, TILE_INDICES } from './mahjong/tile-mesh-data';
   if (!setupRenderer()) {
     state.summary = 'fail';
   } else {
+    loadFixtureScenes();
     loadLevel();
     setupAudio();
     loadTileAtlas(() => {

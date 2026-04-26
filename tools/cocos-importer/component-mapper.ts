@@ -3,6 +3,10 @@ import type {
   CocosUITransformData,
   CocosSpriteData,
   CocosCameraData,
+  CocosLabelData,
+  CocosDirectionalLightData,
+  CocosButtonData,
+  CocosProgressBarData,
   CocosColor,
   CocosVec2,
   CocosSize,
@@ -15,6 +19,10 @@ import type {
   TransformComponent,
   SpriteComponent,
   CameraComponent,
+  LabelComponent,
+  LightComponent,
+  ButtonComponent,
+  ProgressBarComponent,
   ImportIssue,
 } from '../../src/canonical/types.js';
 
@@ -28,6 +36,10 @@ const SUPPORTED_COMPONENTS = new Set([
   'cc.Sprite',
   'cc.Camera',
   'cc.Canvas',
+  'cc.Label',
+  'cc.DirectionalLight',
+  'cc.Button',
+  'cc.ProgressBar',
 ]);
 
 const SILENTLY_SKIPPED = new Set([
@@ -53,10 +65,13 @@ function mapTransform(
 
   if (node.x !== 0) t.x = node.x;
   if (node.y !== 0) t.y = node.y;
-  if (node.z !== 0) (t as Record<string, unknown>).z = node.z;
+  if (node.z !== 0) t.z = node.z;
+  if (Math.abs(node.rotationX) > 0.001) t.rotationX = Math.round(node.rotationX * 1000) / 1000;
+  if (Math.abs(node.rotationY) > 0.001) t.rotationY = Math.round(node.rotationY * 1000) / 1000;
   if (Math.abs(node.rotation) > 0.001) t.rotation = Math.round(node.rotation * 1000) / 1000;
   if (node.scaleX !== 1) t.scaleX = node.scaleX;
   if (node.scaleY !== 1) t.scaleY = node.scaleY;
+  if (node.scaleZ !== 1) t.scaleZ = node.scaleZ;
 
   if (uiTransform) {
     const data = uiTransform.data as CocosUITransformData;
@@ -116,21 +131,66 @@ function mapCamera(comp: ParsedComponent): CameraComponent {
   const data = comp.data as CocosCameraData;
   const cam: CameraComponent = {};
 
+  // Cocos: _projection 0=orthographic, 1=perspective
   if (data._projection === 0) {
     cam.mode = 'orthographic';
-  }
-  if (data._orthoHeight != null) {
-    cam.size = data._orthoHeight;
+    if (data._orthoHeight != null) cam.size = data._orthoHeight;
+  } else {
+    cam.mode = 'perspective';
+    if (data._fov != null) cam.fov = data._fov;
   }
   if (data._near != null) cam.near = data._near;
   if (data._far != null) cam.far = data._far;
 
   const color = data._color as CocosColor | undefined;
-  if (color) {
-    cam.clearColor = colorToHex(color);
-  }
+  if (color) cam.clearColor = colorToHex(color);
 
   return cam;
+}
+
+function mapLabel(comp: ParsedComponent): LabelComponent {
+  const data = comp.data as CocosLabelData;
+  const HALIGN = ['left', 'center', 'right'] as const;
+  const VALIGN = ['top', 'center', 'bottom'] as const;
+  const label: LabelComponent = { text: data._string ?? '' };
+  if (data._fontSize != null) label.fontSize = data._fontSize;
+  if (data._lineHeight != null) label.lineHeight = data._lineHeight;
+  if (data._horizontalAlign != null) label.align = HALIGN[data._horizontalAlign] ?? 'left';
+  if (data._verticalAlign != null) label.vAlign = VALIGN[data._verticalAlign] ?? 'top';
+  if (data._enableWrapText != null) label.wrap = data._enableWrapText;
+  const color = data._color as CocosColor | undefined;
+  if (color && !(color.r === 255 && color.g === 255 && color.b === 255 && color.a === 255)) {
+    label.color = colorToHex(color);
+  }
+  return label;
+}
+
+function mapDirectionalLight(comp: ParsedComponent): LightComponent {
+  const data = comp.data as CocosDirectionalLightData;
+  const light: LightComponent = { kind: 'directional' };
+  const color = data._color as CocosColor | undefined;
+  if (color && !(color.r === 255 && color.g === 255 && color.b === 255 && color.a === 255)) {
+    light.color = colorToHex(color);
+  }
+  if (data._illuminance != null) light.intensity = data._illuminance;
+  return light;
+}
+
+function mapButton(comp: ParsedComponent): ButtonComponent {
+  const data = comp.data as CocosButtonData;
+  const btn: ButtonComponent = {};
+  if (data.interactable != null) btn.interactable = data.interactable;
+  return btn;
+}
+
+function mapProgressBar(comp: ParsedComponent): ProgressBarComponent {
+  const data = comp.data as CocosProgressBarData;
+  const DIR = ['horizontal', 'vertical'] as const;
+  const bar: ProgressBarComponent = { progress: data.progress ?? 0 };
+  if (data.totalLength != null) bar.totalLength = data.totalLength;
+  if (data.mode != null) bar.direction = DIR[data.mode] ?? 'horizontal';
+  if (data.reverse != null) bar.reverse = data.reverse;
+  return bar;
 }
 
 export function mapNode(
@@ -157,6 +217,26 @@ export function mapNode(
   const cameraComp = getFirstComponent(node, 'cc.Camera');
   if (cameraComp) {
     components.Camera = mapCamera(cameraComp);
+  }
+
+  const labelComp = getFirstComponent(node, 'cc.Label');
+  if (labelComp) {
+    components.Label = mapLabel(labelComp);
+  }
+
+  const lightComp = getFirstComponent(node, 'cc.DirectionalLight');
+  if (lightComp) {
+    components.Light = mapDirectionalLight(lightComp);
+  }
+
+  const buttonComp = getFirstComponent(node, 'cc.Button');
+  if (buttonComp) {
+    components.Button = mapButton(buttonComp);
+  }
+
+  const progressComp = getFirstComponent(node, 'cc.ProgressBar');
+  if (progressComp) {
+    components.ProgressBar = mapProgressBar(progressComp);
   }
 
   for (const comp of node.components) {

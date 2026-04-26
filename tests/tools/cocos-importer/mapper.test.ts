@@ -74,14 +74,46 @@ describe('mapSceneNodes', () => {
     expect(camera!.components.Camera!.clearColor).toBe('#1A1A2EFF');
   });
 
-  it('reports unsupported components as issues', () => {
+  it('maps Player node with Label from cc.Label', () => {
+    const parsed = loadAndParse('min-scene.scene');
+    const { entities } = mapSceneNodes(parsed.nodes, parsed.rootNodeIndices, 'test');
+
+    const player = entities.find(e => e.name === 'Player');
+    expect(player).toBeDefined();
+    expect(player!.components.Label).toBeDefined();
+    expect(player!.components.Label!.text).toBe('Player');
+    expect(player!.components.Label!.fontSize).toBe(24);
+    expect(player!.components.Label!.align).toBe('center');
+  });
+
+  it('does not report cc.Label as unsupported', () => {
     const parsed = loadAndParse('min-scene.scene');
     const { issues } = mapSceneNodes(parsed.nodes, parsed.rootNodeIndices, 'test');
 
-    const labelIssue = issues.find(i => i.component === 'cc.Label');
-    expect(labelIssue).toBeDefined();
-    expect(labelIssue!.code).toBe('UNSUPPORTED_COMPONENT');
-    expect(labelIssue!.severity).toBe('warning');
+    expect(issues.some(i => i.component === 'cc.Label')).toBe(false);
+  });
+
+  it('reports truly unsupported components as issues', () => {
+    const node = {
+      index: 0,
+      name: 'WithRigidBody',
+      active: true,
+      x: 0, y: 0, z: 0,
+      rotationX: 0, rotationY: 0, rotation: 0,
+      scaleX: 1, scaleY: 1, scaleZ: 1,
+      parentIndex: null,
+      childIndices: [],
+      components: [{
+        type: 'cc.RigidBody',
+        index: 1,
+        data: { __type__: 'cc.RigidBody' },
+      }],
+    };
+    const { issues } = mapNode(node, [node], 'test', null);
+    const rbIssue = issues.find(i => i.component === 'cc.RigidBody');
+    expect(rbIssue).toBeDefined();
+    expect(rbIssue!.code).toBe('UNSUPPORTED_COMPONENT');
+    expect(rbIssue!.severity).toBe('warning');
   });
 
   it('preserves parent-child hierarchy', () => {
@@ -141,8 +173,8 @@ describe('mapNode edge cases', () => {
       name: 'Empty',
       active: true,
       x: 0, y: 0, z: 0,
-      rotation: 0,
-      scaleX: 1, scaleY: 1,
+      rotationX: 0, rotationY: 0, rotation: 0,
+      scaleX: 1, scaleY: 1, scaleZ: 1,
       parentIndex: null,
       childIndices: [],
       components: [],
@@ -160,8 +192,8 @@ describe('mapNode edge cases', () => {
       name: 'NoFrame',
       active: true,
       x: 0, y: 0, z: 0,
-      rotation: 0,
-      scaleX: 1, scaleY: 1,
+      rotationX: 0, rotationY: 0, rotation: 0,
+      scaleX: 1, scaleY: 1, scaleZ: 1,
       parentIndex: null,
       childIndices: [],
       components: [{

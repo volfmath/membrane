@@ -4,6 +4,8 @@ export interface TransformComponent {
   x?: number;
   y?: number;
   z?: number;
+  rotationX?: number;
+  rotationY?: number;
   rotation?: number;
   scaleX?: number;
   scaleY?: number;
@@ -23,11 +25,39 @@ export interface SpriteComponent {
 }
 
 export interface CameraComponent {
-  mode?: 'orthographic';
+  mode?: 'orthographic' | 'perspective';
+  fov?: number;
   size?: number;
   near?: number;
   far?: number;
   clearColor?: string;
+}
+
+export interface LabelComponent {
+  text: string;
+  fontSize?: number;
+  lineHeight?: number;
+  align?: 'left' | 'center' | 'right';
+  vAlign?: 'top' | 'center' | 'bottom';
+  color?: string;
+  wrap?: boolean;
+}
+
+export interface LightComponent {
+  kind: 'directional' | 'point' | 'spot';
+  color?: string;
+  intensity?: number;
+}
+
+export interface ButtonComponent {
+  interactable?: boolean;
+}
+
+export interface ProgressBarComponent {
+  progress: number;
+  totalLength?: number;
+  direction?: 'horizontal' | 'vertical';
+  reverse?: boolean;
 }
 
 export interface TagsComponent {
@@ -48,6 +78,10 @@ export type CanonicalComponents = {
   Transform?: TransformComponent;
   Sprite?: SpriteComponent;
   Camera?: CameraComponent;
+  Label?: LabelComponent;
+  Light?: LightComponent;
+  Button?: ButtonComponent;
+  ProgressBar?: ProgressBarComponent;
   Tags?: TagsComponent;
   PrefabRef?: PrefabRefComponent;
 } & Record<string, CanonicalComponentValue | undefined>;

@@ -17,9 +17,12 @@ export interface ParsedNode {
   x: number;
   y: number;
   z: number;
-  rotation: number;
+  rotationX: number;
+  rotationY: number;
+  rotation: number;  // Z-axis rotation (Euler degrees)
   scaleX: number;
   scaleY: number;
+  scaleZ: number;
   parentIndex: number | null;
   childIndices: number[];
   components: ParsedComponent[];
@@ -37,10 +40,18 @@ export interface ParsedScene {
   objects: CocosSerializedObject[];
 }
 
-function quatToDegreesZ(q: CocosQuat): number {
+function quatToEulerXYZ(q: CocosQuat): { rotationX: number; rotationY: number; rotation: number } {
+  const RAD = 180 / Math.PI;
+  const sinX = 2 * (q.w * q.x + q.y * q.z);
+  const cosX = 1 - 2 * (q.x * q.x + q.y * q.y);
+  const sinP = Math.max(-1, Math.min(1, 2 * (q.w * q.y - q.z * q.x)));
   const sinZ = 2 * (q.w * q.z + q.x * q.y);
   const cosZ = 1 - 2 * (q.y * q.y + q.z * q.z);
-  return Math.atan2(sinZ, cosZ) * (180 / Math.PI);
+  return {
+    rotationX: Math.atan2(sinX, cosX) * RAD,
+    rotationY: Math.asin(sinP) * RAD,
+    rotation: Math.atan2(sinZ, cosZ) * RAD,
+  };
 }
 
 export function colorToHex(c: CocosColor): string {
@@ -80,6 +91,7 @@ export function parseSceneFile(json: unknown): ParsedScene {
     const obj = objects[i];
     if (!isNodeData(obj)) continue;
 
+    const euler = obj._lrot ? quatToEulerXYZ(obj._lrot) : { rotationX: 0, rotationY: 0, rotation: 0 };
     const node: ParsedNode = {
       index: i,
       name: obj._name || `node_${i}`,
@@ -87,9 +99,12 @@ export function parseSceneFile(json: unknown): ParsedScene {
       x: obj._lpos?.x ?? 0,
       y: obj._lpos?.y ?? 0,
       z: obj._lpos?.z ?? 0,
-      rotation: obj._lrot ? quatToDegreesZ(obj._lrot) : 0,
+      rotationX: euler.rotationX,
+      rotationY: euler.rotationY,
+      rotation: euler.rotation,
       scaleX: obj._lscale?.x ?? 1,
       scaleY: obj._lscale?.y ?? 1,
+      scaleZ: obj._lscale?.z ?? 1,
       parentIndex: (obj._parent && isCocosRef(obj._parent)) ? obj._parent.__id__ : null,
       childIndices: (obj._children || []).filter(isCocosRef).map(ref => ref.__id__),
       components: [],

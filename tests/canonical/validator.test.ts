@@ -180,13 +180,13 @@ describe('validateScene', () => {
     expect(result.valid).toBe(true);
   });
 
-  it('validates Camera mode must be orthographic', () => {
+  it('validates Camera mode must be orthographic or perspective', () => {
     const result = validateScene({
       format: CANONICAL_FORMATS.scene,
       version: 1,
       sceneId: 'test',
       entities: [
-        { id: 'e1', components: { Camera: { mode: 'perspective' } } },
+        { id: 'e1', components: { Camera: { mode: 'isometric' } } },
       ],
     });
     expect(result.valid).toBe(false);
